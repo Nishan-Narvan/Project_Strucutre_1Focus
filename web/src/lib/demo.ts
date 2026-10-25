@@ -1,5 +1,5 @@
 // @reviewed 2026-10-25
-import { addDays, today, uid } from "./date";
+import { addDays, parseYmd, toMin, today, uid } from "./date";
 import { buildSessions } from "./schedule";
 import type { AppState, Goal, Module, Resource, Roadmap, SourceType, Task, TaskKind } from "./types";
 
@@ -415,9 +415,23 @@ mlRoadmap.modules = [
 
 // ---------------------------------------------------------------- assemble
 
+const SAMPLE_NOTES = [
+  "Finally clicked once I drew it on paper first.",
+  "Took longer than planned — re-watch the second half tomorrow.",
+  "Solved without hints. Wrote the complexity in the margin.",
+  "Key idea: store what you've already seen so you never look twice.",
+  "",
+  "Got stuck on an edge case (empty input). Added it to my checklist.",
+];
+
 function demoGoal(g: Omit<Goal, "id" | "sessions" | "createdAt">, completeBefore: string, skip: string[] = []): Goal {
   const goal: Goal = { ...g, id: uid(), createdAt: g.startDate, sessions: [] };
-  goal.sessions = buildSessions(goal, goal.startDate).map((s) => ({ ...s, done: s.date < completeBefore && !skip.includes(s.date) }));
+  goal.sessions = buildSessions(goal, goal.startDate).map((s, i) => {
+    const done = s.date < completeBefore && !skip.includes(s.date);
+    const at = parseYmd(s.date);
+    at.setHours(Math.floor(toMin(g.prefStart) / 60) + 1, (i * 13) % 60);
+    return done ? { ...s, done, doneAt: at.toISOString(), note: SAMPLE_NOTES[i % SAMPLE_NOTES.length] || undefined } : { ...s, done };
+  });
   return goal;
 }
 
@@ -427,11 +441,11 @@ export function createDemoState(): AppState {
   return {
     settings: { provider: "anthropic", model: "claude-opus-5-5", baseUrl: "", apiKeyLast4: "", webResearch: true },
     routines: [
-      { id: uid(), title: "Sleep", start: "23:00", end: "07:00", days: everyDay, color: "#4b5563" },
-      { id: uid(), title: "Breakfast", start: "07:30", end: "08:00", days: everyDay, color: "#8a6a55" },
-      { id: uid(), title: "Work", start: "09:00", end: "17:30", days: [1, 2, 3, 4, 5], color: "#6a9bcc" },
-      { id: uid(), title: "Gym", start: "18:00", end: "19:00", days: [1, 3, 5], color: "#7fb685" },
-      { id: uid(), title: "Dinner", start: "20:30", end: "21:00", days: everyDay, color: "#8a6a55" },
+      { id: uid(), title: "Sleep", start: "23:00", end: "07:00", days: everyDay, color: "#3d3d3d" },
+      { id: uid(), title: "Breakfast", start: "07:30", end: "08:00", days: everyDay, color: "#5c5c5c" },
+      { id: uid(), title: "Work", start: "09:00", end: "17:30", days: [1, 2, 3, 4, 5], color: "#707070" },
+      { id: uid(), title: "Gym", start: "18:00", end: "19:00", days: [1, 3, 5], color: "#858585" },
+      { id: uid(), title: "Dinner", start: "20:30", end: "21:00", days: everyDay, color: "#5c5c5c" },
     ],
     events: [
       { id: uid(), date: addDays(t0, 1), title: "Dentist", start: "17:45", end: "18:30" },
@@ -442,7 +456,7 @@ export function createDemoState(): AppState {
         {
           title: "Crack DSA for coding interviews", outcome: "Pass FAANG-style coding rounds", currentLevel: "Some exposure",
           known: "Python basics, solved ~20 LeetCode easies", targetLevel: "Job-ready", startDate: addDays(t0, -16), deadline: addDays(t0, 54),
-          hoursPerDay: 1.5, days: everyDay, prefStart: "19:00", prefs: "Prefer video walkthroughs then practice", color: "#d97757", roadmap: dsaRoadmap,
+          hoursPerDay: 1.5, days: everyDay, prefStart: "19:00", prefs: "Prefer video walkthroughs then practice", color: "#f5f5f5", roadmap: dsaRoadmap,
         },
         t0,
         [addDays(t0, -2), addDays(t0, -1)], // two missed days → "behind" demo
@@ -451,7 +465,7 @@ export function createDemoState(): AppState {
         {
           title: "Conversational Spanish", outcome: "Chat comfortably on a trip to Mexico", currentLevel: "Beginner+",
           known: "Duolingo for 3 months, present tense", targetLevel: "Intermediate (B1)", startDate: addDays(t0, -9), deadline: addDays(t0, 47),
-          hoursPerDay: 0.75, days: everyDay, prefStart: "07:00", prefs: "Comprehensible input, free resources", color: "#6a9bcc", roadmap: spanishRoadmap,
+          hoursPerDay: 0.75, days: everyDay, prefStart: "07:00", prefs: "Comprehensible input, free resources", color: "#b8b8b8", roadmap: spanishRoadmap,
         },
         t0,
       ),
@@ -459,7 +473,7 @@ export function createDemoState(): AppState {
         {
           title: "Machine learning foundations", outcome: "Build and evaluate my own ML models", currentLevel: "Beginner",
           known: "Python, pandas", targetLevel: "Working knowledge", startDate: t0, deadline: addDays(t0, 60),
-          hoursPerDay: 1, days: [0, 2, 4, 6], prefStart: "21:00", prefs: "Visual explanations, hands-on projects", color: "#7fb685", roadmap: mlRoadmap,
+          hoursPerDay: 1, days: [0, 2, 4, 6], prefStart: "21:00", prefs: "Visual explanations, hands-on projects", color: "#8a8a8a", roadmap: mlRoadmap,
         },
         t0,
       ),

@@ -15,10 +15,14 @@
 - `lib/types.ts` — domain types (Goal, Roadmap, Module, Task, Session, Routine, DayEvent, Settings, AppState)
 - `lib/date.ts` — YYYY-MM-DD + HH:MM helpers, `uid()`
 - `lib/schedule.ts` — `budget`, `buildSessions` (fill days ≤ daily cap, split long tasks), `progress`, `overdue`, `layoutDay` (24h placement around routines/events)
+- `lib/rules.ts` — RULES (4 goals, 6 h/day, 7-day edit window, 12 tasks/module), `isEditable`, `lockDate`
 - `lib/demo.ts` — `createDemoState()` (3 goals), `demoRoadmapFor(title)`
 - `lib/store.tsx` — `StoreProvider` / `useStore()`; localStorage demo state; action API to be swapped for Supabase
-- `components/` — `Shell` (nav), `ui` (ModuleBar, SourceBadge, KindTag, Check, ConfirmButton, PageHeader), `Mermaid`, `Timeline`
-- `app/` — `/` dashboard, `/goals/new`, `/goals/[id]`, `/calendar`, `/day/[date]`, `/routines`, `/settings`
+- `components/` — `Shell` (nav), `ui` (ModuleBar, CompleteButton+note dialog, SourceBadge, KindTag, ConfirmButton, PageHeader), `Timeline`, `DayView` (Today + /day), `Road` (roadmap as winding road)
+- `app/` — `/` Today, `/goals` overview, `/goals/new` brainstorm, `/goals/[id]` road + phase panel, `/calendar`, `/day/[date]`, `/routines`, `/settings`
+
+## Design
+Black/white, one crystal hue (#bfe9ff) only on what's current. Skills: `.claude/skills/frontend-design`, `.claude/skills/taste-skill` (user's brief overrides their no-glow rule).
 
 ## Stack
 Next.js 15 (App Router, TS, Tailwind v4) in `web/` → Vercel (root dir `web`). Later: Supabase (auth, Postgres+RLS, Vault), worker on Railway.

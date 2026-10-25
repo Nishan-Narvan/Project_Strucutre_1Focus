@@ -62,6 +62,25 @@ export interface Session {
   date: string; // YYYY-MM-DD
   minutes: number;
   done: boolean;
+  /** ISO timestamp of when it was marked complete. */
+  doneAt?: string;
+  /** What the learner wrote on completion: what they learned, links, blockers. */
+  note?: string;
+}
+
+export interface ContextAttachment {
+  id: string;
+  name: string;
+  type: string; // MIME
+  size: number;
+  /** Small data-URL preview for images; full files go to Supabase Storage in P1. */
+  preview?: string;
+}
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  text: string;
+  attachments?: ContextAttachment[];
 }
 
 export interface Goal {
@@ -81,6 +100,8 @@ export interface Goal {
   createdAt: string;
   roadmap: Roadmap;
   sessions: Session[];
+  /** Brainstorm transcript + attached context the roadmap was built from. */
+  brainstorm?: ChatMessage[];
 }
 
 export interface Routine {

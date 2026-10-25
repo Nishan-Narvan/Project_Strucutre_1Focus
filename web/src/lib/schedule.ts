@@ -85,6 +85,23 @@ export function progress(g: Goal) {
 
 export const overdue = (g: Goal, onDate: string) => g.sessions.filter((s) => !s.done && s.date < onDate);
 
+/**
+ * Daily-habit streak: consecutive scheduled days (newest first) whose sessions were all completed.
+ * Today counts only once finished, so an unfinished today doesn't break the streak.
+ */
+export function streak(g: Goal, onDate: string) {
+  const byDate: Record<string, boolean> = {};
+  for (const s of g.sessions) byDate[s.date] = (byDate[s.date] ?? true) && s.done;
+  const dates = Object.keys(byDate).filter((d) => d <= onDate).sort().reverse();
+  let n = 0;
+  for (const d of dates) {
+    if (byDate[d]) n++;
+    else if (d === onDate) continue;
+    else break;
+  }
+  return n;
+}
+
 export const lastSessionDate = (g: Goal) => g.sessions.reduce((max, s) => (s.date > max ? s.date : max), g.startDate);
 
 export const taskSessions = (g: Goal, taskId: string) => g.sessions.filter((s) => s.taskId === taskId);
@@ -125,7 +142,7 @@ export function fixedBlocks(state: AppState, date: string): FixedBlock[] {
   }
   for (const ev of state.events.filter((e) => e.date === date)) {
     const s = toMin(ev.start);
-    out.push({ kind: "event", id: ev.id, title: ev.title, color: "#e3b341", start: s, end: Math.max(toMin(ev.end), s + 15), source: ev });
+    out.push({ kind: "event", id: ev.id, title: ev.title, color: "#e5e5e5", start: s, end: Math.max(toMin(ev.end), s + 15), source: ev });
   }
   return out.sort((a, b) => a.start - b.start);
 }

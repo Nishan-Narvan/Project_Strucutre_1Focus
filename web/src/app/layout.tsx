@@ -1,12 +1,11 @@
-// @reviewed 2026-10-25
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Instrument_Sans, Instrument_Serif } from "next/font/google";
 import "./globals.css";
 import { StoreProvider } from "@/lib/store";
 import { Shell } from "@/components/Shell";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const ui = Instrument_Sans({ variable: "--font-ui", subsets: ["latin"] });
+const display = Instrument_Serif({ variable: "--font-display", subsets: ["latin"], weight: "400" });
 
 export const metadata: Metadata = {
   title: "Pathwise",
@@ -16,7 +15,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body className={`${ui.variable} ${display.variable} antialiased`}>
         <StoreProvider>
           <Shell>{children}</Shell>
         </StoreProvider>

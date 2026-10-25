@@ -1,20 +1,21 @@
-/* @reviewed 2026-10-25 */
 @import "tailwindcss";
 
+/* Pathwise: black ground, white ink, one crystal hue reserved for "current". */
 @theme {
-  --color-bg: #141210;
-  --color-panel: #1c1916;
-  --color-panel-2: #25211d;
-  --color-line: #34302b;
-  --color-ink: #ece6df;
-  --color-muted: #9a9087;
-  --color-accent: #d97757;
-  --color-ok: #7fb685;
-  --color-warn: #e3b341;
-  --color-bad: #e06c6c;
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
-  --font-serif: Georgia, "Times New Roman", serif;
+  --color-bg: #000000;
+  --color-panel: #0c0c0c;
+  --color-panel-2: #161616;
+  --color-line: #232323;
+  --color-ink: #f4f4f4;
+  --color-muted: #8f8f8f;
+  --color-faint: #4a4a4a;
+  --color-accent: #ffffff;
+  --color-crystal: #bfe9ff;
+  --color-ok: #d9d9d9;
+  --color-warn: #e6e6e6;
+  --color-bad: #ff8f8f;
+  --font-sans: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-display), Georgia, serif;
 }
 
 html {
@@ -24,31 +25,67 @@ html {
 body {
   background: var(--color-bg);
   color: var(--color-ink);
+  font-feature-settings: "tnum" 1;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-crystal);
+  outline-offset: 2px;
 }
 
 @layer components {
   .card {
-    @apply rounded-xl border border-line bg-panel p-4;
+    @apply rounded-[10px] border border-line bg-panel p-5;
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-panel-2 px-3 py-1.5 text-sm font-medium text-ink transition hover:border-muted disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-full border border-line bg-panel-2 px-4 py-1.5 text-sm font-medium text-ink transition hover:border-faint disabled:opacity-40;
   }
   .btn-primary {
-    @apply border-accent bg-accent text-[#1a1410] hover:brightness-110;
+    @apply border-ink bg-ink text-black hover:bg-white;
   }
   .input {
-    @apply w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm text-ink outline-none placeholder:text-muted/60 focus:border-accent;
+    @apply w-full rounded-lg border border-line bg-black px-3 py-2 text-sm text-ink outline-none placeholder:text-faint focus:border-crystal/60;
   }
   .label {
-    @apply mb-1 block text-xs font-medium uppercase tracking-wide text-muted;
+    @apply mb-1.5 block text-sm font-medium text-muted;
   }
   .chip {
-    @apply inline-flex items-center gap-1 rounded-full border border-line px-2 py-0.5 text-xs text-muted;
+    @apply inline-flex items-center gap-1 rounded-full border border-line px-2.5 py-0.5 text-xs text-muted;
   }
 }
 
-/* Mermaid output inherits our palette */
-.diagram svg {
-  max-width: 100%;
-  height: auto;
+/* ---------- Crystal: the glow marks what is current, nothing else ---------- */
+.crystal-text {
+  color: var(--color-crystal);
+  text-shadow: 0 0 14px rgb(191 233 255 / 0.55);
+}
+.crystal-ring {
+  box-shadow:
+    0 0 0 1px rgb(191 233 255 / 0.7),
+    0 0 22px rgb(191 233 255 / 0.35),
+    inset 0 0 14px rgb(191 233 255 / 0.18);
+}
+.crystal-dot {
+  background: var(--color-crystal);
+  box-shadow: 0 0 10px 2px rgb(191 233 255 / 0.65);
+}
+
+@keyframes flow {
+  to {
+    stroke-dashoffset: -48;
+  }
+}
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.road-flow {
+  stroke-dasharray: 10 14;
+  animation: flow 1.6s linear infinite;
+}
+.glow-pulse {
+  animation: pulse-glow 2.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .road-flow, .glow-pulse { animation: none; }
 }
