@@ -1,7 +1,8 @@
 # Pathwise — working rules
 
 ## Workflow
-- Work **one step at a time**: finish a single step, report briefly, wait for go-ahead before the next.
+- **Read [TASKS.md](TASKS.md) first.** ✅ tasks are done and verified — never re-verify them; build on them.
+- Work **one step at a time**: finish a single step, verify once, mark it ✅ in TASKS.md, report briefly, wait for go-ahead.
 - Phases and scope live in [docs/PRD.md](docs/PRD.md).
 
 ## Review markers (save tokens)
