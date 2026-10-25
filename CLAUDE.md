@@ -1,14 +1,15 @@
 # Pathwise — working rules
 
 ## Workflow
-- **Read [TASKS.md](TASKS.md) first.** ✅ tasks are done and verified — never re-verify them; build on them.
-- Work **one step at a time**: finish a single step, verify once, mark it ✅ in TASKS.md, report briefly, wait for go-ahead.
+- Work **one step at a time**: finish a single step, verify once, report briefly, wait for go-ahead.
 - Phases and scope live in [docs/PRD.md](docs/PRD.md).
 
-## Review markers (save tokens)
-- A file whose first line is `// @reviewed YYYY-MM-DD` (or `/* @reviewed YYYY-MM-DD */` in CSS) is reviewed and stable.
-- **Do not re-read reviewed files** unless the current task requires changing or calling into them; rely on the summary below.
-- When you change a reviewed file, update its date. New files get the marker once they build cleanly.
+## Line-level review (save tokens)
+- Git tag `reviewed` = every line up to it is reviewed. **Never re-read or re-check those lines.**
+- To see only unreviewed lines: `git diff reviewed -- web/src` (includes uncommitted edits).
+- After reviewing them: commit, then `git tag -f reviewed` — those lines are now done.
+- Need context from reviewed code? Use the code map below, not a re-read. Open a reviewed file only to edit/call into it.
+- `// @reviewed` file headers are just a visual hint; the git tag is the source of truth.
 
 ## Reviewed code map (web/src)
 - `lib/types.ts` — domain types (Goal, Roadmap, Module, Task, Session, Routine, DayEvent, Settings, AppState)
