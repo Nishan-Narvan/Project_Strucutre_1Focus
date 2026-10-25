@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #141210;
+  --color-panel: #1c1916;
+  --color-panel-2: #25211d;
+  --color-line: #34302b;
+  --color-ink: #ece6df;
+  --color-muted: #9a9087;
+  --color-accent: #d97757;
+  --color-ok: #7fb685;
+  --color-warn: #e3b341;
+  --color-bad: #e06c6c;
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-serif: Georgia, "Times New Roman", serif;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-line bg-panel p-4;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-panel-2 px-3 py-1.5 text-sm font-medium text-ink transition hover:border-muted disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply border-accent bg-accent text-[#1a1410] hover:brightness-110;
+  }
+  .input {
+    @apply w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm text-ink outline-none placeholder:text-muted/60 focus:border-accent;
+  }
+  .label {
+    @apply mb-1 block text-xs font-medium uppercase tracking-wide text-muted;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-line px-2 py-0.5 text-xs text-muted;
+  }
+}
+
+/* Mermaid output inherits our palette */
+.diagram svg {
+  max-width: 100%;
+  height: auto;
+}
