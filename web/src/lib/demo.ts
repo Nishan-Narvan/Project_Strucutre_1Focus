@@ -1,3 +1,4 @@
+// @reviewed 2026-10-25
 import { addDays, today, uid } from "./date";
 import { buildSessions } from "./schedule";
 import type { AppState, Goal, Module, Resource, Roadmap, SourceType, Task, TaskKind } from "./types";

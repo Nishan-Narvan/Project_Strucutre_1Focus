@@ -1,3 +1,4 @@
+// @reviewed 2026-10-25
 export type SourceType = "reddit" | "youtube" | "docs" | "course" | "article" | "book" | "other";
 export type TaskKind = "learn" | "practice" | "project" | "review" | "quiz";
 export type ProviderId = "anthropic" | "openai" | "openrouter" | "gemini" | "custom";
