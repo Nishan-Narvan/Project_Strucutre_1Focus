@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
 import { fmtDate, fmtDuration, today } from "@/lib/date";
 import { progress, taskSessions } from "@/lib/schedule";
@@ -17,6 +17,7 @@ export default function PhasePage() {
   const g = state.goals.find((x) => x.id === id);
   const index = Number(n) - 1;
   const m = g?.roadmap.modules[index];
+  usePhaseNav(g ? `/goals/${g.id}/phase/` : null, index, g?.roadmap.modules.length ?? 0);
 
   if (!g || !m)
     return (
@@ -47,14 +48,29 @@ export default function PhasePage() {
         <Link href={`/goals/${g.id}`} className="text-muted hover:text-ink">
           {g.title}, all phases
         </Link>
-        <div className="flex gap-2">
-          {index > 0 && <Link className="btn" href={`/goals/${g.id}/phase/${index}`}>Phase {index}</Link>}
-          {index < total - 1 && <Link className="btn" href={`/goals/${g.id}/phase/${index + 2}`}>Phase {index + 2}</Link>}
+        <div className="flex items-center gap-1.5" aria-label="Phases">
+          {g.roadmap.modules.map((x, i) => (
+            <Link
+              key={x.id}
+              href={`/goals/${g.id}/phase/${i + 1}`}
+              aria-label={`Phase ${i + 1}: ${x.title}`}
+              aria-current={i === index ? "page" : undefined}
+              className={`h-2 rounded-full transition-all ${i === index ? "w-6 bg-ink" : p.modules[i].ratio >= 1 ? "w-2 bg-muted hover:bg-ink" : "w-2 bg-line hover:bg-muted"}`}
+            />
+          ))}
+          <span className="ml-2 hidden text-xs text-faint sm:inline">Swipe or use ← → keys</span>
         </div>
       </nav>
 
+      {index > 0 && (
+        <SideButton dir="prev" href={`/goals/${g.id}/phase/${index}`} label={`Previous phase: ${g.roadmap.modules[index - 1].title}`} />
+      )}
+      {index < total - 1 && (
+        <SideButton dir="next" href={`/goals/${g.id}/phase/${index + 2}`} label={`Next phase: ${g.roadmap.modules[index + 1].title}`} />
+      )}
+
       {/* The screen's one question: how complete is this phase? */}
-      <section className="grid min-h-[calc(100dvh-170px)] items-center gap-10 lg:grid-cols-[1fr_auto]">
+      <section className="grid min-h-[calc(100dvh-170px)] items-center gap-10 px-10 md:px-12 lg:grid-cols-[1fr_auto]">
         <div className="max-w-xl">
           <p className={`text-sm ${current ? "crystal-text" : "text-muted"}`}>
             Phase {index + 1} of {total}, {done ? "complete" : current ? "in progress" : index > p.currentModule ? "up next on the road" : "not started"}
@@ -173,6 +189,68 @@ export default function PhasePage() {
         </div>
       </section>
     </>
+  );
+}
+
+/** Previous/next phase with arrow keys and horizontal swipes. */
+function usePhaseNav(base: string | null, index: number, total: number) {
+  const router = useRouter();
+  useEffect(() => {
+    if (!base) return;
+    const go = (d: number) => {
+      const n = index + d;
+      if (n >= 0 && n < total) router.push(`${base}${n + 1}`);
+    };
+    if (index > 0) router.prefetch(`${base}${index}`);
+    if (index < total - 1) router.prefetch(`${base}${index + 2}`);
+
+    // never hijack keys or swipes meant for a field or the note dialog
+    const busy = (target: EventTarget | null) =>
+      !!document.querySelector("[role=dialog]") || (target instanceof Element && !!target.closest("input, textarea, select, [contenteditable]"));
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || busy(e.target)) return;
+      if (e.key === "ArrowLeft") go(-1);
+      if (e.key === "ArrowRight") go(1);
+    };
+    let sx = 0, sy = 0, tracking = false;
+    const onStart = (e: TouchEvent) => {
+      tracking = e.touches.length === 1 && !busy(e.target);
+      sx = e.touches[0]?.clientX ?? 0;
+      sy = e.touches[0]?.clientY ?? 0;
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (!tracking) return;
+      tracking = false;
+      const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+      if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) go(dx < 0 ? 1 : -1);
+    };
+
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("touchstart", onStart, { passive: true });
+    window.addEventListener("touchend", onEnd);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("touchstart", onStart);
+      window.removeEventListener("touchend", onEnd);
+    };
+  }, [base, index, total, router]);
+}
+
+function SideButton({ dir, href, label }: { dir: "prev" | "next"; href: string; label: string }) {
+  return (
+    <Link
+      href={href}
+      aria-label={label}
+      title={label}
+      className={`fixed top-1/2 z-30 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full border border-line bg-black/80 text-ink transition hover:border-muted hover:bg-panel-2 ${
+        dir === "prev" ? "left-2 md:left-[228px]" : "right-2 md:right-4"
+      }`}
+    >
+      <svg viewBox="0 0 16 16" className="h-4 w-4" aria-hidden>
+        <path d={dir === "prev" ? "M10 3 5 8l5 5" : "M6 3l5 5-5 5"} stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </Link>
   );
 }
 
