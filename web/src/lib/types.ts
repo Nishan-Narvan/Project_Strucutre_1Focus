@@ -66,6 +66,10 @@ export interface Session {
   doneAt?: string;
   /** What the learner wrote on completion: what they learned, links, blockers. */
   note?: string;
+  /** Deliberately skipped: not counted as missed. The work itself stays unfinished. */
+  skipped?: { reason: string; at: string };
+  /** A fixed start time (HH:MM) for this one session, instead of the goal's usual time. */
+  start?: string;
 }
 
 export interface ContextAttachment {
@@ -102,7 +106,58 @@ export interface Goal {
   sessions: Session[];
   /** Brainstorm transcript + attached context the roadmap was built from. */
   brainstorm?: ChatMessage[];
+  /** Missing means active. Paused and archived goals have no planned sessions and do not count toward limits. */
+  status?: GoalStatus;
+  /** When the status last changed (ISO). */
+  statusAt?: string;
+  /** Study done outside the plan. Counts toward time KPIs, not roadmap progress. */
+  logs?: StudyLog[];
 }
+
+export type GoalStatus = "active" | "paused" | "archived";
+
+export interface StudyLog {
+  id: string;
+  date: string; // YYYY-MM-DD
+  minutes: number;
+  note?: string;
+  at: string; // ISO, when it was logged
+}
+
+/** Built-in measures computed from the app's own data; "manual" ones are logged by the person. */
+export type KpiSource = "manual" | "streak" | "completion" | "minutes_week" | "tasks_week" | "pace";
+
+export interface KpiValue {
+  id: string;
+  date: string; // YYYY-MM-DD
+  value: number;
+  note?: string;
+}
+
+export interface Kpi {
+  id: string;
+  /** Missing = about the person as a whole, not one goal. */
+  goalId?: string;
+  name: string;
+  unit: string;
+  target: number;
+  /** Whether a higher or a lower value is better. */
+  direction: "up" | "down";
+  frequency: "daily" | "weekly";
+  source: KpiSource;
+  values: KpiValue[];
+  createdAt: string;
+}
+
+export interface Limits {
+  maxActiveGoals: number;
+  maxDailyHours: number;
+  maxTasksPerModule: number;
+  /** Days after creation during which tasks and phases may be removed. 0 = never lock. */
+  editWindowDays: number;
+}
+
+export type DashboardWidget = "summary" | "kpis" | "goals" | "paused";
 
 export interface Routine {
   id: string;
@@ -141,6 +196,15 @@ export interface Settings {
   /** IANA time zone, so the server knows what "today" is for the person. */
   timezone?: string;
   appearance?: Appearance;
+  /** Overrides of the app's limits; anything missing uses the default. */
+  limits?: Partial<Limits>;
+  /** Let assistants make ordinary (non-destructive) changes without asking each time. */
+  autoApplySafe?: boolean;
+  weekStart?: "mon" | "sun";
+  /** Default length for new tasks, in minutes. */
+  defaultTaskMinutes?: number;
+  /** Which sections the Goals page shows, in order. */
+  dashboard?: DashboardWidget[];
 }
 
 /** How the app looks. Synced with the account, except an uploaded image, which stays on its device. */
@@ -221,4 +285,5 @@ export interface AppState {
   memories: Memory[];
   chat: AgentTurn[];
   pastChats: PastChat[];
+  kpis?: Kpi[];
 }

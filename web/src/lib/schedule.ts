@@ -83,7 +83,8 @@ export function progress(g: Goal) {
   return { pct: total ? done / total : 0, total, done, modules, currentModule: current === -1 ? modules.length - 1 : current };
 }
 
-export const overdue = (g: Goal, onDate: string) => g.sessions.filter((s) => !s.done && s.date < onDate);
+/** Unfinished sessions from before `onDate`. A deliberately skipped session is not counted as missed. */
+export const overdue = (g: Goal, onDate: string) => g.sessions.filter((s) => !s.done && !s.skipped && s.date < onDate);
 
 /**
  * Daily-habit streak: consecutive scheduled days (newest first) whose sessions were all completed.
@@ -91,7 +92,8 @@ export const overdue = (g: Goal, onDate: string) => g.sessions.filter((s) => !s.
  */
 export function streak(g: Goal, onDate: string) {
   const byDate: Record<string, boolean> = {};
-  for (const s of g.sessions) byDate[s.date] = (byDate[s.date] ?? true) && s.done;
+  // A skipped session neither keeps nor breaks the streak
+  for (const s of g.sessions) if (!s.skipped) byDate[s.date] = (byDate[s.date] ?? true) && s.done;
   const dates = Object.keys(byDate).filter((d) => d <= onDate).sort().reverse();
   let n = 0;
   for (const d of dates) {
@@ -166,9 +168,12 @@ export function layoutDay(state: AppState, date: string) {
   const study: StudyBlock[] = [];
 
   for (const g of state.goals) {
-    const pref = toMin(g.prefStart || "19:00");
+    const goalPref = toMin(g.prefStart || "19:00");
     const idx = taskIndex(g);
-    for (const s of g.sessions.filter((x) => x.date === date)) {
+    // Skipped sessions take no time on the day
+    for (const s of g.sessions.filter((x) => x.date === date && !x.skipped)) {
+      // A session moved to a set time starts there; the rest start at the goal's usual time
+      const pref = s.start ? toMin(s.start) : goalPref;
       const info = idx[s.taskId];
       if (!info) continue;
       const all = taskSessions(g, s.taskId);

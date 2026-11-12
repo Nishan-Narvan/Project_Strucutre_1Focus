@@ -415,7 +415,8 @@ mlRoadmap.modules = [
 
 // ---------------------------------------------------------------- assemble
 
-const SAMPLE_NOTES = [
+/** Notes the sample goals are seeded with. Exported so "clear demo data" can recognise them. */
+export const SAMPLE_NOTES = [
   "Finally clicked once I drew it on paper first.",
   "Took longer than planned — re-watch the second half tomorrow.",
   "Solved without hints. Wrote the complexity in the margin.",

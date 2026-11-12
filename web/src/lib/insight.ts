@@ -1,7 +1,8 @@
 import type { AppState, Goal, Task } from "./types";
 import { addDays, daysBetween, fmtDuration, hhmm, weekday, WEEKDAYS } from "./date";
 import { fixedBlocks, lastSessionDate, layoutDay, overdue, progress, streak, taskIndex } from "./schedule";
-import { RULES } from "./rules";
+import { isActive, isEditable, limitsOf } from "./rules";
+import { kpiLines } from "./kpi";
 
 /**
  * Everything the app can work out about the person from their own data.
@@ -15,10 +16,10 @@ const pct = (done: number, planned: number) => (planned ? Math.round((done / pla
 
 /**
  * The goal read off its roadmap: tasks finished overall, the tasks that finish in the
- * Monday-to-Sunday week around `t`, and how each day of that week went.
+ * week around `t` (Monday to Sunday, or Sunday to Saturday), and how each day of that week went.
  */
-export function roadmapTrack(g: Goal, t: string) {
-  const start = addDays(t, -((weekday(t) + 6) % 7));
+export function roadmapTrack(g: Goal, t: string, weekStart: "mon" | "sun" = "mon") {
+  const start = addDays(t, weekStart === "sun" ? -weekday(t) : -((weekday(t) + 6) % 7));
   const end = addDays(start, 6);
   const doneMin: Record<string, number> = {};
   const lastDate: Record<string, string> = {};
@@ -31,7 +32,8 @@ export function roadmapTrack(g: Goal, t: string) {
   const dueThisWeek = tasks.filter((task) => lastDate[task.id] >= start && lastDate[task.id] <= end);
   const days = Array.from({ length: 7 }, (_, i) => {
     const date = addDays(start, i);
-    const sessions = g.sessions.filter((s) => s.date === date);
+    // Skipped sessions are excused: a day with only skipped work counts as a rest day
+    const sessions = g.sessions.filter((s) => s.date === date && !s.skipped);
     const state: DayState = !sessions.length ? "rest" : sessions.every((s) => s.done) ? "done" : date < t ? "missed" : date === t ? "today" : "planned";
     return { date, state };
   });
@@ -125,7 +127,8 @@ function busyMinutes(state: AppState, date: string) {
 
 /** The person as a whole: completion across goals, when work gets done, and room for more over the coming `days`. */
 export function lifeInsight(state: AppState, t: string, days = 7) {
-  const goals = state.goals.map((g) => goalInsight(g, t));
+  // Patterns and capacity come from goals being worked on; paused and archived ones are listed separately
+  const goals = state.goals.filter(isActive).map((g) => goalInsight(g, t));
   const planned28 = goals.reduce((a, g) => a + g.planned28, 0);
   const done28 = goals.reduce((a, g) => a + g.done28, 0);
   const rate28 = pct(done28, planned28);
@@ -136,7 +139,7 @@ export function lifeInsight(state: AppState, t: string, days = 7) {
   const doneByPart: Record<string, number> = {};
   for (const g of goals) for (const [k, v] of Object.entries(g.doneByPart)) doneByPart[k] = (doneByPart[k] || 0) + v;
 
-  const cap = RULES.maxDailyHours * 60;
+  const cap = limitsOf(state).maxDailyHours * 60;
   const capacity = Array.from({ length: days }, (_, i) => {
     const date = addDays(t, i);
     const free = 1440 - busyMinutes(state, date);
@@ -176,10 +179,12 @@ export function snapshotText(state: AppState, t: string) {
   const life = lifeInsight(state, t);
   const L: string[] = [];
   L.push(`TODAY: ${t} (${WEEKDAYS[weekday(t)]})`);
-  L.push(`APP LIMITS: at most ${RULES.maxActiveGoals} active goals; at most ${RULES.maxDailyHours}h of study a day across all goals.`);
+  const lim = limitsOf(state);
+  L.push(`APP LIMITS: at most ${lim.maxActiveGoals} active goals; at most ${lim.maxDailyHours}h of study a day across active goals; at most ${lim.maxTasksPerModule} tasks a phase; tasks and phases can be removed during the first ${lim.editWindowDays || "unlimited"} days of a goal${lim.editWindowDays ? "" : " (never locks)"}.`);
+  L.push(`SETTINGS: assistants ${state.settings.autoApplySafe ? "may make ordinary changes without asking" : "ask before every change"}; deletions always need confirmation. Week starts ${state.settings.weekStart === "sun" ? "Sunday" : "Monday"}.`);
   L.push("");
   L.push("OVERALL");
-  L.push(`- Active goals: ${state.goals.length} of ${RULES.maxActiveGoals}`);
+  L.push(`- Active goals: ${state.goals.filter(isActive).length} of ${lim.maxActiveGoals}`);
   L.push(`- Study committed: ${fmtDuration(life.committedPerDay)} a day in total`);
   L.push(`- Completion, last 28 days: ${rateText(life.done28, life.planned28)} of planned minutes, from ${life.pastSessions} past sessions`);
   const wk = life.byWeekday.map((w, d) => (w.planned ? `${WEEKDAYS[d]} ${pct(w.done, w.planned)}%` : null)).filter(Boolean);
@@ -193,14 +198,20 @@ export function snapshotText(state: AppState, t: string) {
     L.push(`- ${WEEKDAYS[weekday(c.date)]} ${c.date}: free ${fmtDuration(c.free)}, study planned ${fmtDuration(c.committed)}, headroom ${fmtDuration(c.headroom)}, realistic ${fmtDuration(c.realistic)}`);
   L.push("");
   L.push("ROUTINES");
-  for (const r of state.routines) L.push(`- ${r.title}: ${r.start} to ${r.end}, ${dayNames(r.days)}`);
+  for (const r of state.routines) L.push(`- [routine_id=${r.id}] ${r.title}: ${r.start} to ${r.end}, ${dayNames(r.days)}`);
   if (!state.routines.length) L.push("- none set");
+  const upcoming = state.events.filter((e) => e.date >= t).sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
+  if (upcoming.length) {
+    L.push("");
+    L.push("ONE-OFF EVENTS ahead");
+    for (const e of upcoming.slice(0, 20)) L.push(`- [event_id=${e.id}] ${e.date} ${e.start}-${e.end}: ${e.title}`);
+  }
   L.push("");
   L.push("GOALS");
   if (!life.goals.length) L.push("- none yet");
   for (const i of life.goals) {
     const g = i.goal;
-    L.push(`[goal_id=${g.id}] "${g.title}"`);
+    L.push(`[goal_id=${g.id}] "${g.title}"${isEditable(g, lim.editWindowDays, t) ? "" : " (roadmap locked: tasks can be added, not removed)"}${g.roadmap.modules.length ? "" : " (NO ROADMAP YET: write one with set_roadmap)"}`);
     L.push(`- Wants: ${g.outcome || g.targetLevel}. Level: from "${g.currentLevel}" to "${g.targetLevel}". Already knew: ${g.known || "not stated"}.`);
     L.push(`- Plan: ${fmtDuration(g.hoursPerDay * 60)} a day, ${dayNames(g.days)}, from ${g.prefStart}. Started ${g.startDate}, deadline ${g.deadline} (${i.daysLeft} days left).`);
     L.push(`- Progress: ${i.pct}% of minutes; ${i.track.tasksDone} of ${i.track.tasksTotal} tasks; on phase ${i.phase} of ${i.phases}, "${i.phaseTitle}". Phase checkpoint: ${i.checkpoint.replace(/\.+$/, "") || "none"}.`);
@@ -213,6 +224,16 @@ export function snapshotText(state: AppState, t: string) {
     if (g.prefs) L.push(`- Learning preferences: ${g.prefs}`);
     for (const n of i.notes) L.push(`- Note ${n.date} on "${n.task}": ${n.note}`);
   }
+  const inactive = state.goals.filter((g) => !isActive(g));
+  if (inactive.length) {
+    L.push("");
+    L.push("PAUSED AND ARCHIVED GOALS (no planned sessions; resume_goal brings one back)");
+    for (const g of inactive) L.push(`- [goal_id=${g.id}] "${g.title}": ${g.status}${g.statusAt ? ` since ${g.statusAt.slice(0, 10)}` : ""}, ${Math.round(progress(g).pct * 100)}% done.`);
+  }
+  L.push("");
+  L.push("KPIS");
+  const kl = kpiLines(state, t);
+  L.push(...(kl.length ? kl : ["- none yet (create_kpi adds one)"]));
   L.push("");
   L.push("MEMORIES (saved in earlier conversations)");
   if (!state.memories.length) L.push("- none yet");

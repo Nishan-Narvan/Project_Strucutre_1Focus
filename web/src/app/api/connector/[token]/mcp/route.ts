@@ -1,14 +1,11 @@
+import { createHmac } from "node:crypto";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { LOCAL_TOOLS, runTool, type ToolContext } from "@/lib/agent/tools";
-import { snapshotText } from "@/lib/insight";
-import { RULES } from "@/lib/rules";
-import { uid } from "@/lib/date";
-import { applyOp, OpError, type Op } from "@/lib/ops";
-import { loadState, NotConfigured, userForConnector, validToken } from "@/lib/server/supabase";
+import { asOne, dryRun, inputSchema, needsApproval, runSpec, TOOLS, BY_NAME, type ToolSpec } from "@/lib/tools/registry";
+import { OpError } from "@/lib/ops";
+import { lastAudit, loadState, NotConfigured, userForConnector, validToken } from "@/lib/server/supabase";
 import { applyForUser, todayIn, undoLast } from "@/lib/server/state";
-import type { AppState } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -16,93 +13,123 @@ export const maxDuration = 30;
 /**
  * Where MyLife as a remote MCP server, for claude.ai's "Add custom connector".
  * The secret token in the URL identifies the account; only its hash is stored.
- * Reads and writes go straight to the account's data: changes apply at once, through
- * the same rules as the app's own buttons, and are recorded in the audit log as "claude".
+ *
+ * Every tool comes from the shared registry (lib/tools/registry.ts), the same one the in-app
+ * assistant uses. Changes apply straight to the account through the same rules as the app's own
+ * buttons, are recorded in the audit log as "claude", and show in the app within seconds.
+ *
+ * Approval happens in the chat: a change that needs it returns a plain-language preview and a
+ * confirm_token instead of being applied. Calling again with the same arguments plus that token
+ * applies it. The token is an HMAC of the account, tool and arguments over a 15-minute window,
+ * so it cannot be reused for a different change.
  */
 
-const INSTRUCTIONS = `Where MyLife is the person's own learning-goal tracker: goals, roadmaps of phases and tasks, daily study sessions planned around routines, and notes written when sessions are finished.
-Start with get_overview: it gives figures computed by the app from their real data (progress, pace, completion rates by weekday and time of day, capacity for the coming week, saved memories). Use the other tools for detail.
-Never invent figures, tasks, dates or patterns. Back each judgement with a number from the data, and say when there is too little data to call something a pattern (under about 8 past sessions). If the data does not show something, say so. Do not flatter; if they are behind, say so plainly.
-Changes apply immediately and show in the app. Only make them when the person asks. undo_last_change reverses the most recent change. Limits: at most ${RULES.maxActiveGoals} active goals, ${RULES.maxDailyHours}h of study a day, ${RULES.maxTasksPerModule} tasks a phase.`;
+const INSTRUCTIONS = `Where MyLife is the person's own learning-goal tracker: goals, roadmaps of phases and tasks, daily study sessions planned around routines, KPIs, and notes written when sessions are finished. You can run the whole app from here.
+Start with get_overview: figures computed by the app from their real data (progress, pace, completion by weekday and time of day, capacity, KPIs, limits, memories). Use get_goal, get_goal_roadmap, get_capacity, get_kpis and the others for detail before changing anything.
+Honesty: never invent figures, tasks, dates or patterns. Back each judgement with a number from the data, and say when there is too little data to call something a pattern (under about 8 past sessions). Do not flatter; if they are behind, say so plainly.
+Roadmaps: when asked to create one, write it yourself with set_roadmap (or create_goal's roadmap field): first principles, start at their current level, realistic total minutes for the time to the deadline, concrete tasks and checkpoints, only real resource links. When reviewing one, read it with get_goal_roadmap, critique it plainly, and apply changes (set_roadmap or bulk_update_roadmap) only when the person agrees.
+Changes: only make them when the person asks. Some changes come back with "Not done yet" and a confirm_token: show the person what will happen, and only after they agree, call the same tool again with the same arguments plus confirm_token. Never confirm on your own. Changes that pass apply immediately and appear in the app. undo_last_change reverses the most recent change; get_recent_changes lists what changed.`;
 
-const READ_ONLY = new Set(["get_overview", "get_goal_roadmap", "get_history", "get_upcoming", "recall"]);
+const CONFIRM_P = { type: "string", description: "Leave out on the first call. If the reply says the change needs confirming, ask the person, and once they agree call again with the same arguments plus this token." };
+const REQUEST_P = { type: "string", description: "Optional id that makes a retry safe: the same request_id is never applied twice." };
 
-const TOOLS = [
-  {
-    name: "get_overview",
-    description:
-      "Start here. The whole picture computed from the person's data: every goal with progress, pace against the deadline, 28-day completion, missed sessions and recent notes; completion by weekday and time of day; free time and realistic capacity for the next 7 days; routines; saved memories.",
-    inputSchema: { type: "object" as const, properties: {} },
-    annotations: { title: "Overview of goals and progress", readOnlyHint: true },
-  },
-  ...LOCAL_TOOLS.map((t) => ({
-    name: t.function.name,
-    description: READ_ONLY.has(t.function.name) ? t.function.description : `${t.function.description.replace(/ The person is asked to approve first\./, "")} Applies immediately.`,
-    inputSchema: t.function.parameters as { type: "object"; properties?: Record<string, unknown> },
-    annotations: { readOnlyHint: READ_ONLY.has(t.function.name), destructiveHint: t.function.name === "delete_memory" },
-  })),
+const toMcp = (spec: ToolSpec) => ({
+  name: spec.name,
+  description: spec.description,
+  inputSchema: inputSchema(spec, spec.kind === "read" ? {} : { confirm_token: CONFIRM_P, request_id: REQUEST_P }),
+  annotations: { readOnlyHint: spec.kind === "read", destructiveHint: spec.kind === "destructive", idempotentHint: spec.kind === "read" },
+});
+
+const EXTRA = [
   {
     name: "undo_last_change",
     description: "Reverse the most recent change to the person's data, whoever made it (the app, its assistant or you). Use it when a change was a mistake.",
-    inputSchema: { type: "object" as const, properties: {} },
-    annotations: { title: "Undo the last change", readOnlyHint: false, destructiveHint: true },
+    inputSchema: { type: "object" as const, properties: { confirm_token: CONFIRM_P } },
+    annotations: { readOnlyHint: false, destructiveHint: true },
+  },
+  {
+    name: "get_recent_changes",
+    description: "The most recent changes to the person's data: when, who made them (web = the person in the app, assistant = the in-app assistant, claude = you) and what they were. undo_last_change reverses the newest one.",
+    inputSchema: { type: "object" as const, properties: { limit: { type: "integer", description: "How many, 1 to 30. Default 10." } } },
+    annotations: { readOnlyHint: true },
   },
 ];
 
 const text = (t: string, isError = false) => ({ content: [{ type: "text" as const, text: t }], ...(isError ? { isError: true } : {}) });
 
-function buildServer(userId: string) {
-  const server = new Server({ name: "where-mylife", version: "0.2.0" }, { capabilities: { tools: {} }, instructions: INSTRUCTIONS });
+/** Stable text for a set of arguments, so the same change always gets the same token. */
+function canonical(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
+  if (v && typeof v === "object")
+    return `{${Object.keys(v)
+      .filter((k) => k !== "confirm_token" && k !== "request_id")
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonical((v as Record<string, unknown>)[k])}`)
+      .join(",")}}`;
+  return JSON.stringify(v ?? null);
+}
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
+const WINDOW_MS = 15 * 60 * 1000;
+function confirmToken(userId: string, name: string, args: unknown, slot = Math.floor(Date.now() / WINDOW_MS)) {
+  const key = process.env.WML_ENCRYPTION_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "where-mylife";
+  return createHmac("sha256", key).update(`${userId}|${name}|${canonical(args)}|${slot}`).digest("base64url").slice(0, 12);
+}
+/** A token from this 15-minute window or the previous one is accepted. */
+function confirmed(userId: string, name: string, args: Record<string, unknown>) {
+  const given = String(args.confirm_token ?? "");
+  if (!given) return false;
+  const slot = Math.floor(Date.now() / WINDOW_MS);
+  return given === confirmToken(userId, name, args, slot) || given === confirmToken(userId, name, args, slot - 1);
+}
+
+function preview(userId: string, name: string, args: Record<string, unknown>, summary: string, destructive: boolean) {
+  return text(
+    `Not done yet: this change needs the person's confirmation.\n\nIt will: ${summary}\n${destructive ? "This removes or replaces something; undo_last_change can still reverse it right after.\n" : ""}\nAsk the person. Only if they agree, call ${name} again with the same arguments plus confirm_token: "${confirmToken(userId, name, args)}".`,
+  );
+}
+
+function buildServer(userId: string) {
+  const server = new Server({ name: "where-mylife", version: "0.3.0" }, { capabilities: { tools: {} }, instructions: INSTRUCTIONS });
+
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [...TOOLS.map(toMcp), ...EXTRA] }));
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const name = req.params.name;
     const args = (req.params.arguments ?? {}) as Record<string, unknown>;
     try {
-      if (name === "undo_last_change") {
-        const r = await undoLast(userId, "claude");
-        return text(`Undone: ${r.undone.replace(/_/g, " ")}. The app shows the change within a few seconds.`);
+      if (name === "get_recent_changes") {
+        const n = Math.min(30, Math.max(1, Math.round(Number(args.limit) || 10)));
+        const rows = await lastAudit(userId, n, false);
+        return text(rows.length ? rows.map((r) => `- ${r.at.slice(0, 16).replace("T", " ")} UTC, by ${r.actor}: ${r.op.replace(/_/g, " ")}`).join("\n") : "No changes recorded yet.");
       }
+      if (name === "undo_last_change") {
+        const [last] = await lastAudit(userId, 1, false);
+        if (!last) return text("There is nothing to undo.");
+        if (!confirmed(userId, name, args)) return preview(userId, name, args, `reverse the most recent change: ${last.op.replace(/_/g, " ")} by ${last.actor} at ${last.at.slice(0, 16).replace("T", " ")} UTC.`, true);
+        const r = await undoLast(userId, "claude");
+        return text(`Undone: ${r.undone.replace(/_/g, " ")}. The app shows it within a few seconds.`);
+      }
+
+      const spec = BY_NAME[name];
+      if (!spec) return text(`Unknown tool "${name}".`, true);
       const row = await loadState(userId);
       if (!row) return text("This account has no data yet. Open Where MyLife and sign in to set it up.", true);
       const t = todayIn(row.state.settings?.timezone);
-      if (name === "get_overview") return text(`Today for the person is ${t}.\n\n${snapshotText(row.state, t)}`);
+      const out = runSpec(spec, args, { state: row.state, t, now: new Date().toISOString() });
+      const body = typeof out.result === "string" ? out.result : JSON.stringify(out.result, null, 1);
+      if (out.error) return text(out.error, true);
+      if (!out.ops?.length) return text(body);
+      const refusal = dryRun(row.state, out.ops, t);
+      if (refusal) return text(`Refused: ${refusal}`, true);
 
-      // Tools record the changes they want; each is checked against a local copy first so the tool can
-      // report problems, then saved to the account with the same rules as everywhere else.
-      let local: AppState = row.state;
-      const ops: Op[] = [];
-      const record = (op: Op) => {
-        try {
-          local = applyOp(local, op, { t });
-          ops.push(op);
-          return true;
-        } catch (e) {
-          if (e instanceof OpError) return false;
-          throw e;
-        }
-      };
-      const ctx: ToolContext = {
-        state: row.state,
-        t,
-        mcp: {},
-        olderTurns: [],
-        addMemory: (kind, memory) => record({ type: "add_memory", memory: { id: uid(), kind, text: memory, source: "agent", createdAt: t } }) && !row.state.memories.some((m) => m.text.toLowerCase() === memory.trim().toLowerCase()),
-        deleteMemory: (id) => void record({ type: "delete_memory", id }),
-        reschedule: (goalId) => void record({ type: "reschedule_goal", goalId }),
-        addTask: (goalId, moduleIndex, task) => {
-          const m = row.state.goals.find((g) => g.id === goalId)?.roadmap.modules[moduleIndex];
-          return record({ type: "add_task", goalId, moduleIndex, task: { ...task, id: `${m?.id ?? "m"}x${uid()}` } });
-        },
-      };
+      if (needsApproval(spec, out, Boolean(row.state.settings.autoApplySafe)) && !confirmed(userId, name, args))
+        return preview(userId, name, args, out.summary ?? out.label, spec.kind === "destructive" || Boolean(out.destructive));
 
-      const { result } = await runTool(name, args, ctx);
-      for (const op of ops) await applyForUser(userId, op, "claude");
-      const body = typeof result === "string" ? result : JSON.stringify(result, null, 1);
-      const isError = typeof result === "object" && result !== null && "error" in result;
-      return text(ops.length ? `${body}\n\nSaved. The app shows the change within a few seconds.` : body, isError);
+      const requestId = typeof args.request_id === "string" ? `claude:${args.request_id.slice(0, 60)}` : undefined;
+      const saved = await applyForUser(userId, asOne(out.ops), "claude", requestId);
+      return text(`${saved.duplicate ? "Already applied earlier (same request_id); nothing changed." : "Done."} ${out.summary ?? ""}\n\n${body}\n\nThe app shows the change within a few seconds.`);
     } catch (e) {
+      if (e instanceof OpError) return text(`Refused: ${e.message}`, true);
       return text(e instanceof Error ? e.message : "Something went wrong.", true);
     }
   });

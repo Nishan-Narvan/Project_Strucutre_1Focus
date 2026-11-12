@@ -24,6 +24,8 @@ export type Status = "loading" | "unconfigured" | "signedOut" | "setup" | "ready
 export type Actor = "web" | "assistant";
 
 interface Actions {
+  /** Save any change (see lib/ops.ts). Returns the reason when the rules refuse it, or null when saved. */
+  apply: (op: Op) => string | null;
   /** Mark one session complete with the learner's note. */
   completeSession: (goalId: string, sessionId: string, note: string) => void;
   /** Mark every remaining session of a task complete with one note. */
@@ -177,29 +179,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [accept, recompute]);
 
-  /** Apply an op here at once and queue it for the server. Returns false when the rules refuse it. */
-  const dispatch = useCallback(
-    (op: Op, actor: Actor): boolean => {
+  /**
+   * Apply an op here at once and queue it for the server.
+   * Returns null when saved, "" when it changed nothing (a duplicate), or the reason the rules refused it.
+   */
+  const attempt = useCallback(
+    (op: Op, actor: Actor): string | null => {
       let next: AppState;
       try {
         next = applyOp(local.current, op, { t: today() });
       } catch (e) {
         if (e instanceof OpError) {
           if (actor === "web") setNotice(e.message);
-          return false;
+          return e.message;
         }
         throw e;
       }
-      if (next === local.current) return false; // nothing changed (a duplicate)
+      if (next === local.current) return ""; // nothing changed (a duplicate)
       pending.current.push({ op, requestId: uid() + uid(), actor });
       local.current = next;
       setView(next);
       setSaving(true);
       void flush();
-      return true;
+      return null;
     },
     [flush],
   );
+  /** Same, as a yes/no: did it change anything? */
+  const dispatch = useCallback((op: Op, actor: Actor) => attempt(op, actor) === null, [attempt]);
 
   const load = useCallback(
     async (since?: number) => {
@@ -262,6 +269,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const store = useMemo<Store>(() => {
     const make = (actor: Actor): Actions => ({
+      apply: (op) => {
+        const r = attempt(op, actor);
+        return r === "" ? null : r;
+      },
       completeSession: (goalId, sessionId, note) => void dispatch({ type: "complete_session", goalId, sessionId, note, at: new Date().toISOString() }, actor),
       completeTask: (goalId, taskId, note) => void dispatch({ type: "complete_task", goalId, taskId, note, at: new Date().toISOString() }, actor),
       reopenSession: (goalId, sessionId) => void dispatch({ type: "reopen_session", goalId, sessionId }, actor),
@@ -323,7 +334,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setStatus("ready");
       },
     };
-  }, [view, status, user, notice, saving, legacy, dispatch, flush, accept]);
+  }, [view, status, user, notice, saving, legacy, attempt, dispatch, flush, accept]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

@@ -1,5 +1,5 @@
 import { addDays, today } from "./date";
-import type { Goal } from "./types";
+import type { AppState, Goal, Limits } from "./types";
 
 /** Product rules that keep people focused (PRD §6.7). */
 export const RULES = {
@@ -11,9 +11,24 @@ export const RULES = {
   maxTasksPerModule: 12,
 };
 
-export const lockDate = (g: Goal) => addDays(g.createdAt, RULES.editWindowDays);
+/** The limits in force: the person's own settings, falling back to the defaults above. */
+export function limitsOf(state?: Pick<AppState, "settings"> | null): Limits {
+  const o = state?.settings?.limits ?? {};
+  const n = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : d);
+  return {
+    maxActiveGoals: n(o.maxActiveGoals, RULES.maxActiveGoals),
+    maxDailyHours: n(o.maxDailyHours, RULES.maxDailyHours),
+    maxTasksPerModule: n(o.maxTasksPerModule, RULES.maxTasksPerModule),
+    editWindowDays: n(o.editWindowDays, RULES.editWindowDays),
+  };
+}
 
-/** True while tasks may still be removed or changed. */
-export const isEditable = (g: Goal) => today() < lockDate(g);
+export const lockDate = (g: Goal, days: number = RULES.editWindowDays) => addDays(g.createdAt, days);
 
-export const committedHours = (goals: Goal[]) => goals.reduce((a, g) => a + g.hoursPerDay, 0);
+/** True while tasks and phases may still be removed. An edit window of 0 days never locks. */
+export const isEditable = (g: Goal, days: number = RULES.editWindowDays, on: string = today()) => days === 0 || on < lockDate(g, days);
+
+/** Goals that are being worked on: they count toward the limits and have planned sessions. */
+export const isActive = (g: Goal) => !g.status || g.status === "active";
+
+export const committedHours = (goals: Goal[]) => goals.filter(isActive).reduce((a, g) => a + g.hoursPerDay, 0);
