@@ -1,14 +1,13 @@
 "use client";
 
-import { useStore } from "@/lib/store";
-import { ConfirmButton, PageHeader } from "@/components/ui";
+import { PageHeader } from "@/components/ui";
+import { BehaviourSettings, DashboardSettings, DataSettings } from "@/components/SettingsPanels";
 import { ModelForm } from "@/components/ModelForm";
 import { McpConnections } from "@/components/McpConnections";
 import { ClaudeConnector } from "@/components/ClaudeConnector";
 import { AppearanceSettings } from "@/components/Appearance";
 
 export default function SettingsPage() {
-  const { resetDemo } = useStore();
 
   return (
     <>
@@ -21,6 +20,8 @@ export default function SettingsPage() {
             <ModelForm />
           </section>
           <AppearanceSettings />
+          <BehaviourSettings />
+          <DashboardSettings />
           <ClaudeConnector />
           <McpConnections />
         </div>
@@ -35,11 +36,7 @@ export default function SettingsPage() {
               <li>You pay the provider directly, or nothing on a free tier.</li>
             </ul>
           </div>
-          <div className="card">
-            <div className="label">Demo data</div>
-            <p className="mb-3 text-sm text-muted">Restore the sample goals, routines and events. Clears the assistant&apos;s memory and conversation; keeps your key and connections.</p>
-            <ConfirmButton onConfirm={resetDemo}>Reset demo data</ConfirmButton>
-          </div>
+          <DataSettings />
         </aside>
       </div>
     </>

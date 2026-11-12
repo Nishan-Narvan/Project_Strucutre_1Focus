@@ -28,6 +28,15 @@ syncs a copy of the data, without keys or tokens, to Supabase (`connector_snapsh
 queued in `connector_actions` and applied by the browser through the store's own actions, so the rules in
 `lib/rules.ts` still hold. This is the first server-side storage and the first piece of the Supabase phase.
 
+**Full control (2026-11-12).** The person can run the whole app from a chat. Every ability is one tool in
+`web/src/lib/tools/registry.ts`, shared by the in-app assistant and the claude.ai connector: goals (create,
+edit, pause, resume, archive, delete), roadmaps (write or replace with `set_roadmap`, phases, tasks, bulk
+edits), progress (sessions, notes, skips, moves, extra study), KPIs, routines, events, capacity, settings
+(including the limits), memories, export and clean-up. Changes are dry-run, then confirmed (Allow card in the
+app, `confirm_token` in Claude) unless they are ordinary and the person enabled auto-apply; destructive ones
+always ask. All of them land in the audit log, and `undo_last_change` reverses the latest. The README's tool
+table is generated from the registry.
+
 Not built yet: the activity log, reviews, background jobs, OAuth sign-in for MCP servers that
 require it, changing hours or deadlines through the agent, and a model-written roadmap for new
 goals. When the data moves to Supabase, the loop moves to the server and the tools read the

@@ -7,9 +7,12 @@ import { NewGoalDialog } from "@/components/NewGoalDialog";
 import { daysBetween, fmtDate, fmtDuration, today, weekday, WEEKDAYS } from "@/lib/date";
 import { lastSessionDate, overdue, progress, streak } from "@/lib/schedule";
 import { roadmapTrack, type DayState } from "@/lib/insight";
-import { committedHours, RULES } from "@/lib/rules";
+import { committedHours, isActive, limitsOf } from "@/lib/rules";
+import { KpiPanel } from "@/components/Kpis";
 import { PageHeader } from "@/components/ui";
-import type { Goal } from "@/lib/types";
+import type { DashboardWidget, Goal } from "@/lib/types";
+
+const DEFAULT_SECTIONS: DashboardWidget[] = ["summary", "kpis", "goals", "paused"];
 
 const pctText = (ratio: number) => `${Math.round(ratio * 100)}%`;
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -24,13 +27,51 @@ export default function GoalsPage() {
   const { state } = useStore();
   const [adding, setAdding] = useState(false);
   const t = today();
-  const goals = state.goals;
+  const goals = state.goals.filter(isActive);
+  const resting = state.goals.filter((g) => !isActive(g));
+  const L = limitsOf(state);
+  // Which sections show, in what order: set in Settings (or by an assistant)
+  const sections = state.settings.dashboard?.length ? state.settings.dashboard : DEFAULT_SECTIONS;
+
+  const blocks: Record<DashboardWidget, ReactNode> = {
+    summary: null,
+    kpis: <KpiPanel key="kpis" title="KPIs" />,
+    goals:
+      goals.length === 0 ? (
+        <div key="goals" className="card">
+          <p className="text-ink">{resting.length ? "No active goals right now." : "You have no goals yet."}</p>
+          <p className="mt-1 text-sm text-muted">Describe what you want to learn; the assistant (or Claude) writes the roadmap and the daily plan.</p>
+          <button type="button" className="btn btn-primary mt-4" onClick={() => setAdding(true)}>Start a new goal</button>
+        </div>
+      ) : (
+        <ul key="goals" className="space-y-4">
+          {goals.map((g) => (
+            <li key={g.id}>
+              <GoalCard goal={g} t={t} />
+            </li>
+          ))}
+        </ul>
+      ),
+    paused: resting.length ? (
+      <section key="paused" aria-label="Paused and archived goals">
+        <h2 className="mb-3 text-base font-medium text-muted">Paused and archived</h2>
+        <ul className="divide-y divide-line rounded-[12px] border border-line bg-panel">
+          {resting.map((g) => (
+            <li key={g.id} className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
+              <Link href={`/goals/${g.id}`} className="min-w-0 flex-1 truncate hover:underline">{g.title}</Link>
+              <span className="text-muted">{g.status}, {pctText(progress(g).pct)} done</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ) : null,
+  };
 
   return (
     <>
       <PageHeader
         title="Goals"
-        sub={`${goals.length} of ${RULES.maxActiveGoals} goals active, ${fmtDuration(committedHours(goals) * 60)} of your ${RULES.maxDailyHours} h day committed.`}
+        sub={sections.includes("summary") ? `${goals.length} of ${L.maxActiveGoals} goals active, ${fmtDuration(committedHours(state.goals) * 60)} of your ${L.maxDailyHours} h day committed.` : undefined}
       >
         <button
           type="button"
@@ -46,28 +87,15 @@ export default function GoalsPage() {
       </PageHeader>
       {adding && <NewGoalDialog onClose={() => setAdding(false)} />}
 
-      {goals.length === 0 ? (
-        <div className="card">
-          <p className="text-ink">You have no goals yet.</p>
-          <p className="mt-1 text-sm text-muted">Describe what you want to learn and Where MyLife builds the roadmap and the daily plan.</p>
-          <button type="button" className="btn btn-primary mt-4" onClick={() => setAdding(true)}>Start a new goal</button>
-        </div>
-      ) : (
-        <ul className="space-y-4">
-          {goals.map((g) => (
-            <li key={g.id}>
-              <GoalCard goal={g} t={t} />
-            </li>
-          ))}
-        </ul>
-      )}
+      <div className="space-y-8">{sections.filter((w) => w !== "summary").map((w) => blocks[w])}</div>
     </>
   );
 }
 
 function GoalCard({ goal: g, t }: { goal: Goal; t: string }) {
+  const { state } = useStore();
   const p = progress(g);
-  const track = roadmapTrack(g, t);
+  const track = roadmapTrack(g, t, state.settings.weekStart);
   const mod = g.roadmap.modules[p.currentModule];
   const st = streak(g, t);
   const missed = overdue(g, t).length;

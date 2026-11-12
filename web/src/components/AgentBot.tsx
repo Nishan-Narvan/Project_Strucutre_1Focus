@@ -120,7 +120,7 @@ export function AgentBot() {
         history,
         question: q,
         t: today(),
-        actions: { addMemory: assistant.addMemory, deleteMemory: assistant.deleteMemory, reschedule: assistant.reschedule, addTask: assistant.addTask, saveSettings: assistant.saveSettings },
+        actions: { apply: assistant.apply, saveSettings: assistant.saveSettings },
         onStep: (label) => {
           seen.push(label);
           setSteps([...seen]);
@@ -157,6 +157,20 @@ export function AgentBot() {
     abort.current?.abort();
     pending?.resolve("skip");
   }
+
+  // Other parts of the app can open the assistant with a question (a new goal, a missing roadmap)
+  const askRef = useRef(ask);
+  askRef.current = ask;
+  useEffect(() => {
+    const on = (e: Event) => {
+      const q = (e as CustomEvent<string>).detail;
+      setOpen(true);
+      setView("chat");
+      if (q) void askRef.current(q);
+    };
+    window.addEventListener("wml-ask", on);
+    return () => window.removeEventListener("wml-ask", on);
+  }, []);
 
   const decide = (v: Verdict) => {
     pending?.resolve(v);

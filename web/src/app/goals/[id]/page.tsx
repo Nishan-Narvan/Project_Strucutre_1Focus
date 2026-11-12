@@ -5,14 +5,16 @@ import { useParams, useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { daysBetween, fmtDate, fmtDuration, today } from "@/lib/date";
 import { lastSessionDate, overdue, progress } from "@/lib/schedule";
-import { isEditable, lockDate } from "@/lib/rules";
-import { ConfirmButton, ModuleBar } from "@/components/ui";
+import { isEditable, limitsOf, lockDate } from "@/lib/rules";
+import { ModuleBar } from "@/components/ui";
+import { GoalEditor, NoRoadmap, StatusBanner, StudyLog } from "@/components/Editors";
+import { KpiPanel } from "@/components/Kpis";
 import { Road } from "@/components/Road";
 
 export default function GoalPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { state, reschedule, deleteGoal } = useStore();
+  const { state, reschedule } = useStore();
   const g = state.goals.find((x) => x.id === id);
 
   if (!g)
@@ -26,10 +28,12 @@ export default function GoalPage() {
   const p = progress(g);
   const behind = overdue(g, t);
   const finishes = lastSessionDate(g);
-  const editable = isEditable(g);
+  const windowDays = limitsOf(state).editWindowDays;
+  const editable = isEditable(g, windowDays);
 
   return (
     <>
+      <StatusBanner goal={g} />
       <header className="mb-8 grid gap-6 md:grid-cols-[1fr_auto] md:items-end">
         <div>
           <p className="text-sm text-muted">
@@ -38,7 +42,7 @@ export default function GoalPage() {
           <h1 className="mt-1 font-serif text-5xl leading-[1.05] tracking-tight">{g.title}</h1>
           <p className="mt-3 text-sm text-muted">
             Daily habit: {fmtDuration(g.hoursPerDay * 60)} from {g.prefStart}.{" "}
-            {editable ? `Roadmap can be changed until ${fmtDate(lockDate(g))}.` : `Locked since ${fmtDate(lockDate(g))}: you can add tasks, not remove them.`}
+            {windowDays === 0 ? "Roadmap can always be changed." : editable ? `Roadmap can be changed until ${fmtDate(lockDate(g, windowDays))}.` : `Locked since ${fmtDate(lockDate(g, windowDays))}: you can add tasks, not remove them.`}
           </p>
         </div>
         <div className="md:text-right">
@@ -59,10 +63,19 @@ export default function GoalPage() {
         </div>
       )}
 
-      <section aria-label="Roadmap" className="mt-8">
-        <Road goal={g} selected={-1} onSelect={(i) => router.push(`/goals/${g.id}/phase/${i + 1}`)} />
-        <p className="mt-2 text-xs text-muted">Open a phase to see its progress, tasks and resources.</p>
-      </section>
+      {g.roadmap.modules.length === 0 ? (
+        <NoRoadmap goal={g} />
+      ) : (
+        <section aria-label="Roadmap" className="mt-8">
+          <Road goal={g} selected={-1} onSelect={(i) => router.push(`/goals/${g.id}/phase/${i + 1}`)} />
+          <p className="mt-2 text-xs text-muted">Open a phase to see its progress, tasks and resources.</p>
+        </section>
+      )}
+
+      <div className="mt-8">
+        <KpiPanel goalId={g.id} title="KPIs for this goal" />
+      </div>
+      <StudyLog goal={g} />
 
       <details className="card mt-8 p-0">
         <summary className="cursor-pointer p-5 text-base font-medium">How this roadmap was built</summary>
@@ -99,9 +112,7 @@ export default function GoalPage() {
         </div>
       </details>
 
-      <div className="mt-8 flex justify-end">
-        <ConfirmButton onConfirm={() => { deleteGoal(g.id); router.push("/goals"); }}>Delete goal</ConfirmButton>
-      </div>
+      <GoalEditor goal={g} />
     </>
   );
 }

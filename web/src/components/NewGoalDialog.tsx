@@ -3,358 +3,185 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
-import { addDays, fmtDate, today, uid, WEEK_ORDER, WEEKDAYS } from "@/lib/date";
-import { budget, buildSessions } from "@/lib/schedule";
-import { committedHours, RULES } from "@/lib/rules";
-import { demoRoadmapFor } from "@/lib/demo";
-import type { ChatMessage, ContextAttachment, Goal } from "@/lib/types";
+import { addDays, today, uid, WEEK_ORDER, WEEKDAYS } from "@/lib/date";
+import { budget } from "@/lib/schedule";
+import { committedHours, isActive, limitsOf } from "@/lib/rules";
+import { agentReady } from "@/lib/providers";
+import { emptyRoadmap } from "@/lib/roadmap";
+import { askAssistant } from "@/components/Editors";
+import type { Goal } from "@/lib/types";
 
-const TINTS = ["#f5f5f5", "#b8b8b8", "#8a8a8a"];
-const CURRENT = ["Complete beginner", "Some exposure", "Intermediate", "Advanced"];
-const TARGET = ["Working knowledge", "Job-ready", "Advanced", "Expert"];
+const TINTS = ["#f5f5f5", "#b8b8b8", "#8a8a8a", "#d4d4d4"];
 
-const STAGES = [
-  { label: "Researching Reddit, YouTube, docs and courses", ms: 3000 },
-  { label: "Building phases from first principles, starting at your level", ms: 2600 },
-  { label: "Cross-checking order, level, time and links", ms: 2400 },
-  { label: "Breaking phases into daily tasks around your routines", ms: 1200 },
-];
-
-/** Downscale an image to a small JPEG data URL so previews stay light in storage. */
-async function preview(file: File): Promise<string | undefined> {
-  if (!file.type.startsWith("image/")) return undefined;
-  const url = URL.createObjectURL(file);
-  try {
-    const img = await new Promise<HTMLImageElement>((res, rej) => {
-      const i = new Image();
-      i.onload = () => res(i);
-      i.onerror = rej;
-      i.src = url;
-    });
-    const s = Math.min(1, 240 / Math.max(img.width, img.height));
-    const c = document.createElement("canvas");
-    c.width = Math.round(img.width * s);
-    c.height = Math.round(img.height * s);
-    c.getContext("2d")?.drawImage(img, 0, 0, c.width, c.height);
-    return c.toDataURL("image/jpeg", 0.7);
-  } catch {
-    return undefined;
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
-const kb = (n: number) => (n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`);
-
-/** Pop-up window where the planning agent talks a new goal through and fills in the brief. */
+/**
+ * Start a new goal: fill in the brief, create it, and the assistant writes the roadmap from it.
+ * Or skip the form and talk it through with the assistant, which creates the goal itself.
+ * Nothing here is scripted: every roadmap comes from a real model (the in-app assistant or Claude).
+ */
 export function NewGoalDialog({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const { state, addGoal } = useStore();
   const t = today();
+  const L = limitsOf(state);
+  const ready = agentReady(state.settings);
   const [f, setF] = useState({
     title: "",
     outcome: "",
-    currentLevel: CURRENT[1],
+    currentLevel: "Some exposure",
     known: "",
-    targetLevel: TARGET[1],
+    targetLevel: "Working knowledge",
+    prefs: "",
     startDate: t,
     deadline: addDays(t, 56),
-    hoursPerDay: 1,
-    days: [0, 1, 2, 3, 4, 5, 6],
+    minutes: 60,
+    days: [1, 2, 3, 4, 5],
     prefStart: "19:00",
-    prefs: "",
   });
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: "assistant", text: "What do you want to learn, and why now? Attach anything that helps: a syllabus, a job post, notes, screenshots of where you're stuck." },
-  ]);
-  const [draft, setDraft] = useState("");
-  const [files, setFiles] = useState<ContextAttachment[]>([]);
-  const [stage, setStage] = useState<number | null>(null);
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const chatEnd = useRef<HTMLDivElement>(null);
-  const input = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+  const first = useRef<HTMLInputElement>(null);
+  const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }));
+
   useEffect(() => {
-    input.current?.focus();
+    first.current?.focus();
     const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", esc);
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", esc);
-      document.body.style.overflow = overflow;
-    };
+    return () => window.removeEventListener("keydown", esc);
   }, [onClose]);
-  // Braces matter: newer browsers return a Promise from scrollIntoView, which an effect must not return
-  useEffect(() => {
-    chatEnd.current?.scrollIntoView({ block: "nearest" });
-  }, [messages]);
 
-  const B = budget(f);
-  const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }));
-  const atLimit = state.goals.length >= RULES.maxActiveGoals;
-  const hoursAfter = committedHours(state.goals) + f.hoursPerDay;
-  const overHours = hoursAfter > RULES.maxDailyHours;
-  const valid = f.title.trim().length > 2 && f.days.length > 0 && f.deadline > f.startDate && !atLimit && !overHours;
-  const allFiles = messages.flatMap((m) => m.attachments ?? []);
+  const hoursPerDay = Math.round((f.minutes / 60) * 100) / 100;
+  const B = budget({ ...f, hoursPerDay });
+  const active = state.goals.filter(isActive).length;
+  const atLimit = active >= L.maxActiveGoals;
+  const hoursAfter = Math.round((committedHours(state.goals) + hoursPerDay) * 100) / 100;
+  const overHours = hoursAfter > L.maxDailyHours;
+  const valid = f.title.trim().length > 1 && f.days.length > 0 && f.deadline > f.startDate && !atLimit && !overHours;
 
-  // P0: scripted brainstorm partner. P2 sends the transcript + attachments to the model.
-  function reply(text: string, attached: ContextAttachment[], userTurns: number): string {
-    const ack = attached.length ? `I'll use ${attached.map((a) => a.name).join(" and ")} as context. ` : "";
-    if (userTurns === 1) {
-      if (!f.title) set("title", text.replace(/\s+/g, " ").slice(0, 70));
-      return `${ack}Good. To start you at the right level: what can you already do here, and what would "done" look like for you?`;
-    }
-    if (userTurns === 2) {
-      set("known", text.slice(0, 240));
-      return `${ack}That puts you just past the basics, so the first phase builds on what you know rather than repeating it. When do you need this by, and how many hours can you give it on a normal day? I've assumed ${f.hoursPerDay} h a day until ${fmtDate(f.deadline)}.`;
-    }
-    const h = text.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hour)/i);
-    const w = text.match(/(\d+)\s*(week|month)/i);
-    if (h) set("hoursPerDay", Math.min(RULES.maxDailyHours, Number(h[1])));
-    if (w) set("deadline", addDays(f.startDate, Number(w[1]) * (w[2].toLowerCase().startsWith("m") ? 30 : 7)));
-    if (h || w) return `${ack}Updated the brief on the right. Check it, then build the roadmap, or keep adding context.`;
-    return `${ack}Noted, I've added that to the brief. Anything about how you like to learn (videos, books, projects)? Otherwise you're ready to build the roadmap.`;
+  function create() {
+    const title = f.title.trim();
+    const goal: Goal = {
+      id: uid() + uid(),
+      title,
+      outcome: f.outcome.trim(),
+      currentLevel: f.currentLevel.trim(),
+      targetLevel: f.targetLevel.trim(),
+      known: f.known.trim(),
+      prefs: f.prefs.trim(),
+      startDate: f.startDate,
+      deadline: f.deadline,
+      hoursPerDay,
+      days: f.days,
+      prefStart: f.prefStart,
+      color: TINTS[state.goals.length % TINTS.length],
+      createdAt: t,
+      roadmap: emptyRoadmap(title),
+      sessions: [],
+      status: "active",
+    };
+    if (!addGoal(goal)) return;
+    onClose();
+    router.push(`/goals/${goal.id}`);
+    if (ready)
+      askAssistant(
+        `I just created the goal "${title}" (goal_id ${goal.id}). Write its roadmap with set_roadmap: start from what I already know, fit the total time to my daily minutes and deadline, use concrete tasks and checkpoints, and real resources only. Then tell me in a few lines why it is ordered this way.`,
+      );
   }
 
-  function send(e: React.FormEvent) {
-    e.preventDefault();
-    if (!draft.trim() && files.length === 0) return;
-    const userTurns = messages.filter((m) => m.role === "user").length + 1;
-    const user: ChatMessage = { role: "user", text: draft.trim(), attachments: files.length ? files : undefined };
-    const assistant: ChatMessage = { role: "assistant", text: reply(draft.trim(), files, userTurns) };
-    if (userTurns >= 4 && draft.trim()) set("prefs", (f.prefs ? f.prefs + "; " : "") + draft.trim().slice(0, 120));
-    setMessages((m) => [...m, user, assistant]);
-    setDraft("");
-    setFiles([]);
+  function talk() {
+    onClose();
+    askAssistant("I want to start a new learning goal. Ask me what I need to tell you, check whether I have room for it, then create it with create_goal including a full roadmap.");
   }
-
-  async function attach(list: FileList | null) {
-    if (!list) return;
-    const added = await Promise.all(
-      [...list].slice(0, 6).map(async (file) => ({ id: uid(), name: file.name, type: file.type || "file", size: file.size, preview: await preview(file) })),
-    );
-    setFiles((x) => [...x, ...added].slice(0, 6));
-  }
-
-  function generate() {
-    setStage(0);
-    let at = 0;
-    STAGES.forEach((s, i) => {
-      timers.current.push(setTimeout(() => setStage(i), at));
-      at += s.ms;
-    });
-    timers.current.push(
-      setTimeout(() => {
-        const goal: Goal = {
-          ...f,
-          title: f.title.trim(),
-          id: uid(),
-          color: TINTS[state.goals.length % TINTS.length],
-          createdAt: t,
-          roadmap: demoRoadmapFor(f.title.trim()),
-          sessions: [],
-          brainstorm: messages,
-        };
-        goal.sessions = buildSessions(goal, goal.startDate < t ? t : goal.startDate);
-        // The rules may still refuse it (another device added a goal meanwhile); the reason is shown as a notice
-        if (addGoal(goal)) router.push(`/goals/${goal.id}`);
-        else setStage(null);
-      }, at),
-    );
-  }
-
-  const full = atLimit && stage === null;
-  // A stray click outside must not throw away a conversation that has started
-  const started = messages.length > 1 || stage !== null;
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-scrim p-3 md:p-6" onClick={started ? undefined : onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="new-goal-title"
-        className={`flex max-h-full w-full flex-col rounded-[16px] border border-line bg-bg shadow-2xl shadow-black ${full ? "max-w-xl" : "max-w-[1120px]"}`}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 grid place-items-center bg-scrim p-3 md:p-6" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-labelledby="new-goal-title" className="glass flex max-h-full w-full max-w-2xl flex-col rounded-[16px] border border-line bg-bg shadow-2xl shadow-black" onClick={(e) => e.stopPropagation()}>
         <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 md:px-7 md:py-5">
           <div>
-            <h2 id="new-goal-title" className="font-serif text-3xl leading-none tracking-tight">
-              {full ? `You already have ${RULES.maxActiveGoals} goals running` : "Start a new goal"}
-            </h2>
-            <p className="mt-2 max-w-2xl text-sm text-muted">
-              {full
-                ? `Where MyLife keeps you to ${RULES.maxActiveGoals} at a time so each one actually gets finished. Complete or delete one to start another.`
-                : "Talk it through first. Where MyLife asks what you know, reads what you attach, then builds a roadmap of phases and a daily plan."}
+            <h2 id="new-goal-title" className="font-serif text-3xl leading-none tracking-tight">{atLimit ? `You already have ${L.maxActiveGoals} active goals` : "Start a new goal"}</h2>
+            <p className="mt-2 max-w-xl text-sm text-muted">
+              {atLimit
+                ? "Finish, pause or archive one to start another, or raise the limit in Settings."
+                : ready
+                  ? "Fill in the brief and the assistant writes the roadmap from it. Or talk it through instead."
+                  : "Fill in the brief. Connect a model in Settings and the assistant can write the roadmap; Claude can too, through the connector."}
             </p>
           </div>
           <button type="button" className="btn shrink-0" onClick={onClose}>Close</button>
         </header>
 
-        {!full && (
-      <div className="grid min-h-0 gap-6 overflow-y-auto p-5 md:p-7 lg:grid-cols-[1.25fr_1fr]">
-        <section aria-label="Brainstorm" className="flex h-[min(560px,64dvh)] flex-col rounded-[10px] border border-line bg-panel lg:h-0 lg:min-h-full">
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
-            {messages.map((m, i) => (
-              <div key={i} className={m.role === "user" ? "ml-auto max-w-[85%]" : "max-w-[85%]"}>
-                <div className={`rounded-[14px] px-4 py-2.5 text-[15px] leading-relaxed ${m.role === "user" ? "bg-ink text-on-ink" : "bg-panel-2 text-ink"}`}>
-                  {m.text || <span className="opacity-60">Attached context</span>}
-                </div>
-                {m.attachments && (
-                  <div className="mt-2 flex flex-wrap justify-end gap-2">
-                    {m.attachments.map((a) => <Attachment key={a.id} a={a} />)}
-                  </div>
-                )}
-              </div>
-            ))}
-            <div ref={chatEnd} />
-          </div>
-
-          <form onSubmit={send} className="border-t border-line p-3">
-            {files.length > 0 && (
-              <div className="mb-2 flex flex-wrap gap-2">
-                {files.map((a) => (
-                  <Attachment key={a.id} a={a} onRemove={() => setFiles((x) => x.filter((y) => y.id !== a.id))} />
-                ))}
-              </div>
-            )}
-            <div className="flex items-end gap-2">
-              <label className="btn cursor-pointer" title="Attach photos or files">
-                Attach
-                <input type="file" multiple accept="image/*,.pdf,.txt,.md,.doc,.docx" className="sr-only" onChange={(e) => { attach(e.target.files); e.target.value = ""; }} />
-              </label>
-              <textarea
-                ref={input}
-                rows={1}
-                className="input min-h-[38px] resize-none"
-                placeholder="I want to get interview-ready in DSA…"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) send(e);
-                }}
-                aria-label="Message"
-              />
-              <button className="btn btn-primary">Send</button>
+        {!atLimit && (
+          <form className="grid min-h-0 gap-4 overflow-y-auto p-5 md:grid-cols-2 md:p-7" onSubmit={(e) => { e.preventDefault(); if (valid) create(); }}>
+            <div className="md:col-span-2">
+              <label className="label" htmlFor="ng-title">What do you want to learn?</label>
+              <input id="ng-title" ref={first} className="input" value={f.title} onChange={(e) => set("title", e.target.value)} placeholder="Get interview-ready in data structures and algorithms" />
             </div>
-            <p className="mt-2 px-1 text-xs text-faint">Images, PDFs and notes up to 6 per message. Demo mode replies with a scripted partner.</p>
+            <div className="md:col-span-2">
+              <label className="label" htmlFor="ng-out">Why, and what does done look like?</label>
+              <input id="ng-out" className="input" value={f.outcome} onChange={(e) => set("outcome", e.target.value)} placeholder="Pass coding rounds at product companies" />
+            </div>
+            <div>
+              <label className="label" htmlFor="ng-cur">Starting from</label>
+              <input id="ng-cur" className="input" value={f.currentLevel} onChange={(e) => set("currentLevel", e.target.value)} />
+            </div>
+            <div>
+              <label className="label" htmlFor="ng-tgt">Aiming for</label>
+              <input id="ng-tgt" className="input" value={f.targetLevel} onChange={(e) => set("targetLevel", e.target.value)} />
+            </div>
+            <div>
+              <label className="label" htmlFor="ng-known">Already know</label>
+              <textarea id="ng-known" rows={2} className="input resize-none" value={f.known} onChange={(e) => set("known", e.target.value)} placeholder="Python basics, ~20 easy problems" />
+            </div>
+            <div>
+              <label className="label" htmlFor="ng-prefs">How you like to learn</label>
+              <textarea id="ng-prefs" rows={2} className="input resize-none" value={f.prefs} onChange={(e) => set("prefs", e.target.value)} placeholder="Short videos, then lots of practice" />
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:col-span-2">
+              <div>
+                <label className="label" htmlFor="ng-min">Minutes a day</label>
+                <input id="ng-min" type="number" min={5} max={1440} step={5} className="input" value={f.minutes} onChange={(e) => set("minutes", Number(e.target.value) || 5)} />
+              </div>
+              <div>
+                <label className="label" htmlFor="ng-time">Start time</label>
+                <input id="ng-time" type="time" className="input" value={f.prefStart} onChange={(e) => set("prefStart", e.target.value)} />
+              </div>
+              <div>
+                <label className="label" htmlFor="ng-start">Start date</label>
+                <input id="ng-start" type="date" className="input" value={f.startDate} onChange={(e) => set("startDate", e.target.value)} />
+              </div>
+              <div>
+                <label className="label" htmlFor="ng-dl">Deadline</label>
+                <input id="ng-dl" type="date" className="input" value={f.deadline} onChange={(e) => set("deadline", e.target.value)} />
+              </div>
+            </div>
+            <div className="md:col-span-2">
+              <span className="label">Study days</span>
+              <div className="flex flex-wrap gap-1" role="group" aria-label="Study days">
+                {WEEK_ORDER.map((d) => {
+                  const on = f.days.includes(d);
+                  return (
+                    <button key={d} type="button" aria-pressed={on} onClick={() => set("days", on ? f.days.filter((x) => x !== d) : [...f.days, d].sort())} className={`rounded-full border px-2.5 py-1.5 text-xs ${on ? "border-ink text-ink" : "border-line text-faint"}`}>
+                      {WEEKDAYS[d].slice(0, 2)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-panel-2 px-4 py-3 md:col-span-2">
+              <div className="font-serif text-3xl">{Math.round(B.minutes / 60)} hours</div>
+              <p className="text-sm text-muted">over {B.days} study days, before the deadline.</p>
+              {overHours && <p className="mt-2 text-sm text-bad">That would take you to {hoursAfter} h a day across active goals, over your {L.maxDailyHours} h limit. Lower the minutes, or pause another goal.</p>}
+              {f.deadline <= f.startDate && <p className="mt-2 text-sm text-bad">The deadline must be after the start date.</p>}
+            </div>
+
+            <div className="flex flex-wrap gap-2 md:col-span-2">
+              <button className="btn btn-primary" disabled={!valid}>{ready ? "Create goal and write its roadmap" : "Create goal"}</button>
+              {ready && <button type="button" className="btn" onClick={talk}>Talk it through with the assistant instead</button>}
+            </div>
+            <p className="text-xs text-faint md:col-span-2">
+              {active} of {L.maxActiveGoals} active goals in use.{L.editWindowDays ? ` Phases and tasks can be removed for ${L.editWindowDays} days, then only added to.` : ""}
+            </p>
           </form>
-        </section>
-
-        <section aria-label="Goal brief" className="card space-y-4">
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-base font-medium">The brief</h2>
-            <span className="text-xs text-muted">{allFiles.length ? `${allFiles.length} attachment${allFiles.length > 1 ? "s" : ""} as context` : "Fills in as you talk"}</span>
-          </div>
-          <div>
-            <label className="label" htmlFor="title">Goal</label>
-            <input id="title" className="input" placeholder="What you want to learn" value={f.title} onChange={(e) => set("title", e.target.value)} />
-          </div>
-          <div>
-            <label className="label" htmlFor="outcome">Done looks like</label>
-            <input id="outcome" className="input" placeholder="e.g. Pass coding rounds at product companies" value={f.outcome} onChange={(e) => set("outcome", e.target.value)} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label" htmlFor="cur">Starting from</label>
-              <select id="cur" className="input" value={f.currentLevel} onChange={(e) => set("currentLevel", e.target.value)}>
-                {CURRENT.map((x) => <option key={x}>{x}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor="tgt">Aiming for</label>
-              <select id="tgt" className="input" value={f.targetLevel} onChange={(e) => set("targetLevel", e.target.value)}>
-                {TARGET.map((x) => <option key={x}>{x}</option>)}
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="label" htmlFor="known">Already know</label>
-            <textarea id="known" rows={2} className="input resize-none" value={f.known} onChange={(e) => set("known", e.target.value)} />
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="label" htmlFor="start">Start</label>
-              <input id="start" type="date" className="input" value={f.startDate} onChange={(e) => set("startDate", e.target.value)} />
-            </div>
-            <div>
-              <label className="label" htmlFor="deadline">Deadline</label>
-              <input id="deadline" type="date" className="input" value={f.deadline} onChange={(e) => set("deadline", e.target.value)} />
-            </div>
-            <div>
-              <label className="label" htmlFor="pref">Daily at</label>
-              <input id="pref" type="time" className="input" value={f.prefStart} onChange={(e) => set("prefStart", e.target.value)} />
-            </div>
-          </div>
-          <div className="grid grid-cols-[96px_1fr] items-end gap-3">
-            <div>
-              <label className="label" htmlFor="hpd">Hours a day</label>
-              <input id="hpd" type="number" min={0.25} max={RULES.maxDailyHours} step={0.25} className="input" value={f.hoursPerDay} onChange={(e) => set("hoursPerDay", Number(e.target.value) || 0.25)} />
-            </div>
-            <div className="flex flex-wrap gap-1" role="group" aria-label="Study days">
-              {WEEK_ORDER.map((d) => {
-                const on = f.days.includes(d);
-                return (
-                  <button key={d} type="button" aria-pressed={on} onClick={() => set("days", on ? f.days.filter((x) => x !== d) : [...f.days, d])}
-                    className={`rounded-full border px-2.5 py-1.5 text-xs ${on ? "border-ink text-ink" : "border-line text-faint"}`}>
-                    {WEEKDAYS[d].slice(0, 2)}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="rounded-lg bg-panel-2 px-4 py-3">
-            <div className="font-serif text-3xl">{Math.round(B.minutes / 60)} hours</div>
-            <p className="text-sm text-muted">over {B.days} study days. The plan uses about 85% of it and keeps the rest as buffer.</p>
-            {overHours && (
-              <p className="mt-2 text-sm text-bad">
-                That would take you to {hoursAfter} h a day across all goals, over the {RULES.maxDailyHours} h limit. Lower the hours or pause another goal.
-              </p>
-            )}
-          </div>
-
-          {stage === null ? (
-            <button className="btn btn-primary w-full py-2.5 text-[15px]" disabled={!valid} onClick={generate}>
-              Build my roadmap
-            </button>
-          ) : (
-            <ol className="space-y-3 pt-1" aria-live="polite">
-              {STAGES.map((s, i) => (
-                <li key={s.label} className="flex items-center gap-3 text-sm">
-                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${i < stage ? "bg-ink" : i === stage ? "crystal-dot glow-pulse" : "bg-line"}`} />
-                  <span className={i < stage ? "text-muted" : i === stage ? "crystal-text" : "text-faint"}>{s.label}</span>
-                </li>
-              ))}
-            </ol>
-          )}
-          <p className="text-xs text-faint">
-            {state.goals.length} of {RULES.maxActiveGoals} goals in use. Roadmaps can be changed for {RULES.editWindowDays} days, then only added to.
-          </p>
-        </section>
-      </div>
         )}
       </div>
     </div>
-  );
-}
-
-function Attachment({ a, onRemove }: { a: ContextAttachment; onRemove?: () => void }) {
-  return (
-    <span className="flex items-center gap-2 rounded-lg border border-line bg-bg p-1.5 pr-2.5 text-xs">
-      {a.preview ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={a.preview} alt={a.name} className="h-9 w-9 rounded object-cover" />
-      ) : (
-        <span className="grid h-9 w-9 place-items-center rounded bg-panel-2 text-[10px] text-muted">{a.name.split(".").pop()?.slice(0, 4)}</span>
-      )}
-      <span className="max-w-32 truncate text-ink">{a.name}</span>
-      <span className="text-faint">{kb(a.size)}</span>
-      {onRemove && (
-        <button type="button" className="text-muted hover:text-bad" onClick={onRemove} aria-label={`Remove ${a.name}`}>
-          Remove
-        </button>
-      )}
-    </span>
   );
 }

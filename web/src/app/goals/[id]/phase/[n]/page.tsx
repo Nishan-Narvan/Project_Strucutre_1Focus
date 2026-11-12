@@ -6,14 +6,15 @@ import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
 import { fmtDate, fmtDuration, today } from "@/lib/date";
 import { progress, taskSessions } from "@/lib/schedule";
-import { isEditable, RULES } from "@/lib/rules";
+import { limitsOf } from "@/lib/rules";
+import { PhaseEditor, TaskControls } from "@/components/Editors";
 import { CompleteButton, fmtDoneAt, KindTag, SourceBadge } from "@/components/ui";
 import type { Goal, TaskKind } from "@/lib/types";
 
 /** Full-screen view of one phase: how complete it is first, then the work. */
 export default function PhasePage() {
   const { id, n } = useParams<{ id: string; n: string }>();
-  const { state, completeTask, reopenTask, removeTask } = useStore();
+  const { state, completeTask, reopenTask } = useStore();
   const g = state.goals.find((x) => x.id === id);
   const index = Number(n) - 1;
   const m = g?.roadmap.modules[index];
@@ -40,7 +41,6 @@ export default function PhasePage() {
   const nextTask = m.tasks.find((task) => !status(task.id));
   const remaining = g.sessions.filter((s) => s.moduleIndex === index && !s.done).map((s) => s.date).sort();
   const finishOn = remaining[remaining.length - 1];
-  const editable = isEditable(g);
 
   return (
     <>
@@ -77,6 +77,7 @@ export default function PhasePage() {
           </p>
           <h1 className="mt-2 font-serif text-6xl leading-[1.02] tracking-tight md:text-7xl">{m.title}</h1>
           <p className="mt-5 text-lg leading-relaxed text-ink/85">{m.objective}</p>
+          <PhaseEditor key={m.id} goal={g} index={index} />
 
           <dl className="mt-10 grid grid-cols-2 gap-x-8 gap-y-6 sm:grid-cols-3">
             <div>
@@ -123,14 +124,14 @@ export default function PhasePage() {
           <h2 className="mb-1 text-lg font-medium">Tasks</h2>
           <p className="mb-4 text-xs text-muted">Completing one asks what you learned; the note and time stay on the task.</p>
           <ol className="space-y-1">
-            {m.tasks.map((task) => {
+            {m.tasks.map((task, position) => {
               const sessions = taskSessions(g, task.id);
               const isDone = status(task.id);
               const doneAt = sessions.filter((s) => s.doneAt).map((s) => s.doneAt!).sort().pop();
               const upcoming = sessions.filter((s) => !s.done);
               const isNext = current && task.id === nextTask?.id;
               return (
-                <li key={task.id} className={`flex gap-3 rounded-lg px-3 py-3 ${isNext ? "crystal-ring bg-[#0d1418]" : ""}`}>
+                <li key={task.id} className={`flex gap-3 rounded-lg px-3 py-3 ${isNext ? "crystal-ring bg-panel-2" : ""}`}>
                   <CompleteButton done={isDone} current={isNext} title={task.title} onComplete={(note) => completeTask(g.id, task.id, note)} onReopen={() => reopenTask(g.id, task.id)} />
                   <div className="min-w-0 flex-1 text-sm">
                     <div className="flex flex-wrap items-baseline gap-x-2">
@@ -153,10 +154,9 @@ export default function PhasePage() {
                         ))}
                       </p>
                     )}
+                    <TaskControls key={`${task.id}-${task.minutes}-${task.title}`} goal={g} task={task} phaseIndex={index} position={position} done={isDone} />
                   </div>
-                  {editable && !isDone && (
-                    <button className="self-start text-xs text-faint hover:text-bad" onClick={() => removeTask(g.id, task.id)} aria-label={`Remove ${task.title}`}>Remove</button>
-                  )}
+
                 </li>
               );
             })}
@@ -285,9 +285,10 @@ function Ring({ ratio, current }: { ratio: number; current: boolean }) {
 }
 
 function AddTask({ goal: g, index }: { goal: Goal; index: number }) {
-  const { addTask } = useStore();
-  const [f, setF] = useState({ title: "", minutes: 45, kind: "practice" as TaskKind });
-  const full = g.roadmap.modules[index].tasks.length >= RULES.maxTasksPerModule;
+  const { state, addTask } = useStore();
+  const [f, setF] = useState({ title: "", minutes: state.settings.defaultTaskMinutes ?? 45, kind: "practice" as TaskKind });
+  const max = limitsOf(state).maxTasksPerModule;
+  const full = g.roadmap.modules[index].tasks.length >= max;
   return (
     <form
       className="mt-5 border-t border-line pt-4"
@@ -305,12 +306,13 @@ function AddTask({ goal: g, index }: { goal: Goal; index: number }) {
           <option value="practice">Practice</option>
           <option value="project">Project</option>
           <option value="review">Review</option>
+          <option value="quiz">Quiz</option>
         </select>
-        <input type="number" min={10} max={240} step={5} className="input w-24" value={f.minutes} onChange={(e) => setF({ ...f, minutes: Number(e.target.value) || 30 })} aria-label="Minutes" />
+        <input type="number" min={10} max={600} step={5} className="input w-24" value={f.minutes} onChange={(e) => setF({ ...f, minutes: Number(e.target.value) || 30 })} aria-label="Minutes" />
         <button className="btn" disabled={full}>Add</button>
       </div>
       <p className="mt-2 text-xs text-muted">
-        {full ? `This phase already has the maximum of ${RULES.maxTasksPerModule} tasks.` : "New tasks are scheduled from today, after the work already planned."}
+        {full ? `This phase already has the maximum of ${max} tasks.` : "New tasks are scheduled from today, after the work already planned."}
       </p>
     </form>
   );

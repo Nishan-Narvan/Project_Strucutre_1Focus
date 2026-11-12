@@ -14,7 +14,10 @@ export default function CalendarPage() {
   const t = today();
 
   const first = new Date(cursor.y, cursor.m, 1);
-  const lead = (first.getDay() + 6) % 7; // Monday-first grid
+  // The week starts on the day chosen in Settings
+  const sunday = state.settings.weekStart === "sun";
+  const order = sunday ? [0, 1, 2, 3, 4, 5, 6] : WEEK_ORDER;
+  const lead = sunday ? first.getDay() : (first.getDay() + 6) % 7;
   const daysInMonth = new Date(cursor.y, cursor.m + 1, 0).getDate();
   const cells = Array.from({ length: Math.ceil((lead + daysInMonth) / 7) * 7 }, (_, i) => {
     const day = i - lead + 1;
@@ -53,7 +56,7 @@ export default function CalendarPage() {
 
       <div className="overflow-x-auto">
         <div className="grid min-w-[640px] grid-cols-7 gap-px overflow-hidden rounded-xl border border-line bg-line">
-          {WEEK_ORDER.map((d) => (
+          {order.map((d) => (
             <div key={d} className="bg-panel px-2 py-1.5 text-center text-xs font-medium text-muted">{WEEKDAYS[d]}</div>
           ))}
           {cells.map((d, i) =>
@@ -63,7 +66,7 @@ export default function CalendarPage() {
                 href={`/day/${d}`}
                 className={`min-h-28 bg-panel p-1.5 transition hover:bg-panel-2 ${d < t ? "opacity-75" : ""}`}
               >
-                <div className={`mb-1 inline-grid h-6 w-6 place-items-center rounded-full text-xs ${d === t ? "bg-accent font-semibold text-[#1a1410]" : "text-muted"}`}>
+                <div className={`mb-1 inline-grid h-6 w-6 place-items-center rounded-full text-xs ${d === t ? "bg-accent font-semibold text-on-ink" : "text-muted"}`}>
                   {Number(d.slice(8))}
                 </div>
                 <div className="space-y-0.5">

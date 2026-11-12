@@ -109,12 +109,29 @@ export function AccountGate() {
 
 /** Signed-in email, save status, and sign out, for the sidebar. */
 export function AccountBox() {
-  const { user, saving } = useStore();
+  const { user, saving, undo } = useStore();
+  const [undone, setUndone] = useState("");
   if (!user) return null;
   return (
     <div className="hidden px-5 pt-6 text-xs text-faint md:block">
       <p className="truncate text-muted" title={user.email}>{user.email}</p>
       <p className="mt-0.5">{saving ? "Saving…" : "All changes saved"}</p>
+      <button
+        type="button"
+        className="mt-2 block text-muted underline underline-offset-2 hover:text-ink"
+        onClick={async () => {
+          try {
+            const what = await undo();
+            setUndone(`Undid: ${what.replace(/_/g, " ")}`);
+          } catch (e) {
+            setUndone(e instanceof Error ? e.message : "Could not undo.");
+          }
+          setTimeout(() => setUndone(""), 5000);
+        }}
+      >
+        Undo last change
+      </button>
+      {undone && <p className="mt-1 text-muted" role="status">{undone}</p>}
       <form action="/auth/logout" method="post" className="mt-2">
         <button className="text-muted underline underline-offset-2 hover:text-ink">Sign out</button>
       </form>

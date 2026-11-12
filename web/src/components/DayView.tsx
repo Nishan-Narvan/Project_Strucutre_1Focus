@@ -7,6 +7,8 @@ import { addDays, fmtDate, fmtDuration, hhmm, today, weekday, WEEKDAYS } from "@
 import { layoutDay, progress, streak } from "@/lib/schedule";
 import { Timeline, nextBlock, useNowMinutes } from "@/components/Timeline";
 import { CompleteButton } from "@/components/ui";
+import { EventItem, SessionControls } from "@/components/Editors";
+import { isActive } from "@/lib/rules";
 import type { AppState } from "@/lib/types";
 
 const dayMinutes = (state: AppState, date: string) =>
@@ -15,7 +17,7 @@ const dayLeft = (state: AppState, date: string) =>
   state.goals.reduce((a, g) => a + g.sessions.filter((s) => s.date === date && !s.done).reduce((x, s) => x + s.minutes, 0), 0);
 
 export function DayView({ initialDate }: { initialDate: string }) {
-  const { state, completeSession, reopenSession, addEvent, deleteEvent } = useStore();
+  const { state, completeSession, reopenSession, addEvent } = useStore();
   const t = today();
   const [date, setDate] = useState(initialDate);
   const [ev, setEv] = useState({ title: "", start: "12:00", end: "13:00" });
@@ -110,11 +112,29 @@ export function DayView({ initialDate }: { initialDate: string }) {
                         <Link href={`/goals/${b.goal.id}`} className="hover:text-ink hover:underline">{b.goal.title}</Link>
                       </div>
                       {b.session.note && <p className="mt-1 border-l border-faint pl-2 text-xs italic text-ink/70">{b.session.note}</p>}
+                      <SessionControls key={`${b.session.id}-${b.session.done}-${b.session.note ?? ""}`} goal={b.goal} session={b.session} />
                     </div>
                   </li>
                 );
               })}
             </ul>
+            {state.goals.some((g) => g.sessions.some((s) => s.date === date && s.skipped)) && (
+              <div className="mt-5 border-t border-line pt-4">
+                <h3 className="mb-2 text-sm text-muted">Skipped</h3>
+                <ul className="space-y-2 text-sm">
+                  {state.goals.flatMap((g) =>
+                    g.sessions
+                      .filter((s) => s.date === date && s.skipped)
+                      .map((s) => (
+                        <li key={s.id}>
+                          <span className="text-muted">{g.roadmap.modules.flatMap((m) => m.tasks).find((x) => x.id === s.taskId)?.title ?? "Session"}, {g.title}</span>
+                          <SessionControls goal={g} session={s} />
+                        </li>
+                      )),
+                  )}
+                </ul>
+              </div>
+            )}
           </section>
 
           <section className="card">
@@ -123,7 +143,7 @@ export function DayView({ initialDate }: { initialDate: string }) {
               <Link href="/goals" className="text-xs text-muted hover:text-ink">All goals</Link>
             </div>
             <ul className="space-y-4">
-              {state.goals.map((g) => {
+              {state.goals.filter(isActive).map((g) => {
                 const p = progress(g);
                 const todays = g.sessions.filter((s) => s.date === t);
                 const doneToday = todays.length > 0 && todays.every((s) => s.done);
@@ -149,12 +169,7 @@ export function DayView({ initialDate }: { initialDate: string }) {
           <section className="card">
             <h2 className="mb-3 text-base font-medium">One-off events</h2>
             <ul className="mb-3 space-y-1.5">
-              {state.events.filter((e) => e.date === date).map((e) => (
-                <li key={e.id} className="flex items-center gap-2 text-sm">
-                  <span className="text-muted">{e.start}–{e.end}</span> {e.title}
-                  <button className="ml-auto text-xs text-muted hover:text-bad" onClick={() => deleteEvent(e.id)} aria-label={`Remove ${e.title}`}>Remove</button>
-                </li>
-              ))}
+              {state.events.filter((e) => e.date === date).map((e) => <EventItem key={`${e.id}-${e.title}-${e.date}-${e.start}-${e.end}`} event={e} />)}
             </ul>
             <form
               className="space-y-2"
