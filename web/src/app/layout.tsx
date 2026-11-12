@@ -8,7 +8,7 @@ const ui = Instrument_Sans({ variable: "--font-ui", subsets: ["latin"] });
 const display = Instrument_Serif({ variable: "--font-display", subsets: ["latin"], weight: "400" });
 
 export const metadata: Metadata = {
-  title: "Pathwise",
+  title: "Where MyLife",
   description: "AI-built learning roadmaps, scheduled into your day.",
 };
 

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
@@ -47,7 +46,8 @@ async function preview(file: File): Promise<string | undefined> {
 
 const kb = (n: number) => (n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`);
 
-export default function NewGoal() {
+/** Pop-up window where the planning agent talks a new goal through and fills in the brief. */
+export function NewGoalDialog({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const { state, addGoal } = useStore();
   const t = today();
@@ -72,8 +72,23 @@ export default function NewGoal() {
   const [stage, setStage] = useState<number | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const chatEnd = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLTextAreaElement>(null);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
-  useEffect(() => chatEnd.current?.scrollIntoView({ block: "nearest" }), [messages]);
+  useEffect(() => {
+    input.current?.focus();
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", esc);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", esc);
+      document.body.style.overflow = overflow;
+    };
+  }, [onClose]);
+  // Braces matter: newer browsers return a Promise from scrollIntoView, which an effect must not return
+  useEffect(() => {
+    chatEnd.current?.scrollIntoView({ block: "nearest" });
+  }, [messages]);
 
   const B = budget(f);
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }));
@@ -148,28 +163,36 @@ export default function NewGoal() {
     );
   }
 
-  if (atLimit && stage === null)
-    return (
-      <div className="max-w-xl">
-        <h1 className="font-serif text-5xl leading-tight">You already have {RULES.maxActiveGoals} goals running</h1>
-        <p className="mt-4 text-[15px] text-ink/80">
-          Pathwise keeps you to {RULES.maxActiveGoals} at a time so each one actually gets finished. Complete or delete one to start another.
-        </p>
-        <Link href="/goals" className="btn btn-primary mt-6">See your goals</Link>
-      </div>
-    );
+  const full = atLimit && stage === null;
+  // A stray click outside must not throw away a conversation that has started
+  const started = messages.length > 1 || stage !== null;
 
   return (
-    <>
-      <header className="mb-8">
-        <h1 className="font-serif text-5xl leading-[1.05] tracking-tight">Start a new goal</h1>
-        <p className="mt-3 max-w-2xl text-[15px] text-ink/80">
-          Talk it through first. Pathwise asks what you know, reads what you attach, then builds a roadmap of phases and a daily plan.
-        </p>
-      </header>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-3 md:p-6" onClick={started ? undefined : onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-goal-title"
+        className={`flex max-h-full w-full flex-col rounded-[16px] border border-line bg-black shadow-2xl shadow-black ${full ? "max-w-xl" : "max-w-[1120px]"}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 md:px-7 md:py-5">
+          <div>
+            <h2 id="new-goal-title" className="font-serif text-3xl leading-none tracking-tight">
+              {full ? `You already have ${RULES.maxActiveGoals} goals running` : "Start a new goal"}
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm text-muted">
+              {full
+                ? `Where MyLife keeps you to ${RULES.maxActiveGoals} at a time so each one actually gets finished. Complete or delete one to start another.`
+                : "Talk it through first. Where MyLife asks what you know, reads what you attach, then builds a roadmap of phases and a daily plan."}
+            </p>
+          </div>
+          <button type="button" className="btn shrink-0" onClick={onClose}>Close</button>
+        </header>
 
-      <div className="grid gap-6 lg:grid-cols-[1.25fr_1fr]">
-        <section aria-label="Brainstorm" className="flex h-[640px] flex-col rounded-[10px] border border-line bg-panel">
+        {!full && (
+      <div className="grid min-h-0 gap-6 overflow-y-auto p-5 md:p-7 lg:grid-cols-[1.25fr_1fr]">
+        <section aria-label="Brainstorm" className="flex h-[min(560px,64dvh)] flex-col rounded-[10px] border border-line bg-panel lg:h-0 lg:min-h-full">
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
             {messages.map((m, i) => (
               <div key={i} className={m.role === "user" ? "ml-auto max-w-[85%]" : "max-w-[85%]"}>
@@ -200,6 +223,7 @@ export default function NewGoal() {
                 <input type="file" multiple accept="image/*,.pdf,.txt,.md,.doc,.docx" className="sr-only" onChange={(e) => { attach(e.target.files); e.target.value = ""; }} />
               </label>
               <textarea
+                ref={input}
                 rows={1}
                 className="input min-h-[38px] resize-none"
                 placeholder="I want to get interview-ready in DSA…"
@@ -308,7 +332,9 @@ export default function NewGoal() {
           </p>
         </section>
       </div>
-    </>
+        )}
+      </div>
+    </div>
   );
 }
 

@@ -1,10 +1,10 @@
-# Pathwise — Product Requirements Document
+# Where MyLife — Product Requirements Document
 
 **Status:** Draft v0.1 · **Date:** 2026-10-25 · **Owner:** TBD
 
 ## 1. Summary
 
-Pathwise turns a learning goal ("Get interview-ready in DSA in 10 weeks") into a personalised, research-backed roadmap and a daily schedule. The user brings their own AI API key (Claude, or another provider). The AI researches how people actually learn the subject (Reddit, YouTube, official docs, courses), designs modules using **first-principles decomposition** and the **Zone of Proximal Development (ZPD)**, cross-verifies the roadmap, and breaks it into daily tasks ("data points"). The tasks land on a calendar and a 24-hour daily timeline, alongside the user's other goals and everyday routines. Each goal has a progress bar based on how far through its modules the user is.
+Where MyLife turns a learning goal ("Get interview-ready in DSA in 10 weeks") into a personalised, research-backed roadmap and a daily schedule. The user brings their own AI API key (Claude, or another provider). The AI researches how people actually learn the subject (Reddit, YouTube, official docs, courses), designs modules using **first-principles decomposition** and the **Zone of Proximal Development (ZPD)**, cross-verifies the roadmap, and breaks it into daily tasks ("data points"). The tasks land on a calendar and a 24-hour daily timeline, alongside the user's other goals and everyday routines. Each goal has a progress bar based on how far through its modules the user is.
 
 ## 2. Problem
 
@@ -34,7 +34,7 @@ Pathwise turns a learning goal ("Get interview-ready in DSA in 10 weeks") into a
 - Hosting course content ourselves; we link out to sources.
 - Social features, sharing, cohorts.
 - Native mobile apps (the web app is responsive).
-- Pathwise-paid AI usage; v1 is bring-your-own-key only.
+- Where MyLife-paid AI usage; v1 is bring-your-own-key only.
 
 ## 5. User stories
 
@@ -135,6 +135,8 @@ Generation worker (Railway, Node)  — long-running AI pipeline; polls `jobs` ta
 
 The worker is separate because a full pipeline (research + verification with web search) can run longer than serverless function limits.
 
+The standing agent, its memory and the extra tables it needs are designed in [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
+
 ### Data tables (v1)
 `profiles` · `provider_keys` (vault secret id, provider, model, last4) · `goals` (brief fields, colour, priority, status) · `roadmaps` (goal_id, JSON, verification, sources) · `modules` · `tasks` · `sessions` (task_id, date, minutes, part, done) · `routines` · `events` · `generation_jobs` (stage, status, progress text, stage outputs, error, usage)
 
@@ -157,5 +159,5 @@ The worker is separate because a full pipeline (research + verification with web
 - **Provider CORS/limits:** all calls are server-side, which avoids CORS but means we handle rate limits and retries.
 - **Link rot / hallucinated URLs:** mitigated by search-grounded research plus URL badges. Optional: a HEAD-check worker.
 - **Plan size:** long goals (e.g. 6 months × 3 h/day) produce many tasks. Cap at about 150 tasks and let the scheduler split long tasks across days.
-- **Open:** should Pathwise offer a hosted model for users without a key (paid tier)?
+- **Open:** should Where MyLife offer a hosted model for users without a key (paid tier)?
 - **Open:** Google Calendar two-way sync in P3?

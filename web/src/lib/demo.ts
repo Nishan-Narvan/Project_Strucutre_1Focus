@@ -439,7 +439,10 @@ export function createDemoState(): AppState {
   const t0 = today();
   const everyDay = [0, 1, 2, 3, 4, 5, 6];
   return {
-    settings: { provider: "anthropic", model: "claude-opus-5-5", baseUrl: "", apiKeyLast4: "", webResearch: true },
+    settings: { provider: "groq", model: "", baseUrl: "", apiKey: "", fallbacks: [], webResearch: false, mcp: [] },
+    memories: [],
+    chat: [],
+    pastChats: [],
     routines: [
       { id: uid(), title: "Sleep", start: "23:00", end: "07:00", days: everyDay, color: "#3d3d3d" },
       { id: uid(), title: "Breakfast", start: "07:30", end: "08:00", days: everyDay, color: "#5c5c5c" },

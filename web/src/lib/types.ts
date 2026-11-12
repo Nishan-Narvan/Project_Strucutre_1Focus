@@ -1,7 +1,7 @@
 // @reviewed 2026-10-25
 export type SourceType = "reddit" | "youtube" | "docs" | "course" | "article" | "book" | "other";
 export type TaskKind = "learn" | "practice" | "project" | "review" | "quiz";
-export type ProviderId = "anthropic" | "openai" | "openrouter" | "gemini" | "custom";
+export type ProviderId = "groq" | "gemini" | "openrouter" | "openai" | "anthropic" | "custom";
 
 export interface Resource {
   title: string;
@@ -125,9 +125,67 @@ export interface Settings {
   provider: ProviderId;
   model: string;
   baseUrl: string;
-  /** Only the last 4 chars are kept client-side; full keys will live in Supabase Vault. */
-  apiKeyLast4: string;
+  /** Kept in this browser only. Sent with each agent request and never stored on the server. */
+  apiKey: string;
+  /** Other models of this provider to fall back to, best first, when the chosen one fails or runs out of quota. */
+  fallbacks: string[];
   webResearch: boolean;
+  /** Outside services the agent can use, such as Google Calendar or Notion, reached over MCP. */
+  mcp: McpServer[];
+  /** Lets claude.ai reach this data as a custom connector. The token is the secret part of the connector URL. */
+  connector?: { token: string; lastSync?: string; error?: string };
+}
+
+export interface McpTool {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  /** The server says this tool only reads. Anything else asks the person before it runs. */
+  readOnly: boolean;
+}
+
+export interface McpServer {
+  id: string;
+  name: string;
+  url: string;
+  /** Optional bearer token. Kept in this browser only, like the model key. */
+  token: string;
+  enabled: boolean;
+  /** Tool list as of the last connect or refresh. */
+  tools: McpTool[];
+}
+
+export type MemoryKind = "preference" | "pattern" | "lesson" | "fact" | "commitment";
+
+/** One short thing the agent keeps about the person between conversations. */
+export interface Memory {
+  id: string;
+  kind: MemoryKind;
+  text: string;
+  source: "agent" | "user";
+  createdAt: string; // YYYY-MM-DD
+}
+
+/** One turn of the conversation with the agent. */
+export interface AgentTurn {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  /** What the agent looked at or saved before answering. */
+  steps?: string[];
+  /** The model's reasoning before the answer, shown on request. */
+  thinking?: string;
+  /** Figures in the answer compared with the person's data. */
+  check?: { found: number; missing: string[] };
+  error?: boolean;
+  at?: string; // ISO timestamp
+}
+
+/** A finished conversation, kept so the assistant can look things up in it later. */
+export interface PastChat {
+  id: string;
+  endedAt: string; // YYYY-MM-DD
+  turns: { role: "user" | "assistant"; text: string }[];
 }
 
 export interface AppState {
@@ -135,4 +193,7 @@ export interface AppState {
   routines: Routine[];
   events: DayEvent[];
   settings: Settings;
+  memories: Memory[];
+  chat: AgentTurn[];
+  pastChats: PastChat[];
 }
