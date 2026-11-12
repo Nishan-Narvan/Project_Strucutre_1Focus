@@ -77,7 +77,7 @@ export function CompleteButton({
           else setOpen(true);
         }}
         className={`grid ${size} shrink-0 place-items-center rounded-full border transition ${
-          done ? "border-ink bg-ink text-black" : current ? "crystal-ring border-crystal" : "border-faint hover:border-muted"
+          done ? "border-ink bg-ink text-on-ink" : current ? "crystal-ring border-crystal" : "border-faint hover:border-muted"
         }`}
       >
         {done && (
@@ -111,7 +111,7 @@ function CompleteDialog({ title, onCancel, onSave }: { title: string; onCancel: 
   }, [onCancel]);
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-4" onClick={onCancel}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-scrim p-4" onClick={onCancel}>
       <form
         role="dialog"
         aria-modal="true"

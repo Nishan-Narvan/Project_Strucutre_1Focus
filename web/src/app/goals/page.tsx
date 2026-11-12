@@ -37,7 +37,7 @@ export default function GoalsPage() {
           onClick={() => setAdding(true)}
           aria-label="Start a new goal"
           title="Start a new goal"
-          className="grid h-12 w-12 place-items-center rounded-full bg-ink text-black transition hover:bg-white"
+          className="grid h-12 w-12 place-items-center rounded-full bg-ink text-on-ink transition hover:bg-accent"
         >
           <svg viewBox="0 0 20 20" className="h-5 w-5" aria-hidden>
             <path d="M10 3v14M3 10h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -166,7 +166,7 @@ function Rings({ goal, week, className = "" }: { goal: number; week: number; cla
     const shown = Math.min(1, Math.max(0, ratio));
     return (
       <>
-        <circle cx="80" cy="80" r={r} stroke="#161616" strokeWidth="9" fill="none" />
+        <circle cx="80" cy="80" r={r} stroke="var(--color-panel-2)" strokeWidth="9" fill="none" />
         {shown > 0 && (
           <circle
             cx="80"
@@ -178,7 +178,7 @@ function Rings({ goal, week, className = "" }: { goal: number; week: number; cla
             strokeLinecap="round"
             strokeDasharray={`${c * shown} ${c}`}
             className="ring-draw"
-            style={glow ? { filter: "drop-shadow(0 0 5px rgba(191,233,255,0.7))" } : undefined}
+            style={glow ? { filter: "drop-shadow(0 0 5px var(--glow))" } : undefined}
           />
         )}
       </>
@@ -187,8 +187,8 @@ function Rings({ goal, week, className = "" }: { goal: number; week: number; cla
   return (
     <svg viewBox="0 0 160 160" className={`w-full ${className}`} role="img" aria-label={`${pctText(goal)} of the goal done, ${pctText(week)} of this week's roadmap tasks done`}>
       <g transform="rotate(-90 80 80)">
-        {arc(70, goal, "#f4f4f4")}
-        {arc(54, week, "#bfe9ff", true)}
+        {arc(70, goal, "var(--color-ink)")}
+        {arc(54, week, "var(--color-crystal)", true)}
       </g>
       <text x="80" y="80" textAnchor="middle" dominantBaseline="central" className="fill-ink font-serif" fontSize="32">
         {pctText(goal)}

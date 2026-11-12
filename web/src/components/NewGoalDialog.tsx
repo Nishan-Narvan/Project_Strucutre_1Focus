@@ -169,12 +169,12 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
   const started = messages.length > 1 || stage !== null;
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-3 md:p-6" onClick={started ? undefined : onClose}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-scrim p-3 md:p-6" onClick={started ? undefined : onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="new-goal-title"
-        className={`flex max-h-full w-full flex-col rounded-[16px] border border-line bg-black shadow-2xl shadow-black ${full ? "max-w-xl" : "max-w-[1120px]"}`}
+        className={`flex max-h-full w-full flex-col rounded-[16px] border border-line bg-bg shadow-2xl shadow-black ${full ? "max-w-xl" : "max-w-[1120px]"}`}
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 md:px-7 md:py-5">
@@ -197,7 +197,7 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
             {messages.map((m, i) => (
               <div key={i} className={m.role === "user" ? "ml-auto max-w-[85%]" : "max-w-[85%]"}>
-                <div className={`rounded-[14px] px-4 py-2.5 text-[15px] leading-relaxed ${m.role === "user" ? "bg-ink text-black" : "bg-panel-2 text-ink"}`}>
+                <div className={`rounded-[14px] px-4 py-2.5 text-[15px] leading-relaxed ${m.role === "user" ? "bg-ink text-on-ink" : "bg-panel-2 text-ink"}`}>
                   {m.text || <span className="opacity-60">Attached context</span>}
                 </div>
                 {m.attachments && (
@@ -341,7 +341,7 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
 
 function Attachment({ a, onRemove }: { a: ContextAttachment; onRemove?: () => void }) {
   return (
-    <span className="flex items-center gap-2 rounded-lg border border-line bg-black p-1.5 pr-2.5 text-xs">
+    <span className="flex items-center gap-2 rounded-lg border border-line bg-bg p-1.5 pr-2.5 text-xs">
       {a.preview ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={a.preview} alt={a.name} className="h-9 w-9 rounded object-cover" />

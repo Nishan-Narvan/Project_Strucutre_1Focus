@@ -140,6 +140,23 @@ export interface Settings {
   keyLast4?: string;
   /** IANA time zone, so the server knows what "today" is for the person. */
   timezone?: string;
+  appearance?: Appearance;
+}
+
+/** How the app looks. Synced with the account, except an uploaded image, which stays on its device. */
+export interface Appearance {
+  theme: "dark" | "light" | "system";
+  /** Where the full-screen background comes from. "device" = an image uploaded on this device. */
+  background: "none" | "url" | "device";
+  backgroundUrl?: string;
+  /** How visible the background image is, 0-100. */
+  backgroundOpacity: number;
+  /** Translucent, blurred panels. */
+  glass: boolean;
+  /** How solid panels are in glass mode, 20-100. */
+  panelOpacity: number;
+  /** Blur behind glass panels, in px. */
+  blur: number;
 }
 
 export interface McpTool {

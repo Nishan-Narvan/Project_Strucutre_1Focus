@@ -32,6 +32,13 @@
   - `app/api/sync/route.ts` — browser pushes the data copy (POST), pulls queued changes (GET), acks (PATCH), deletes (DELETE). Bearer = connector token.
   - `lib/server/supabase.ts` — PostgREST via fetch with the service role key (server-only); tables in `supabase/migrations/0001_claude_connector.sql`; env in `web/.env.example`. Only the SHA-256 of the token is stored.
   - `lib/connector.ts` (token, `syncPayload` strips apiKey / MCP tokens / connector), `components/ConnectorSync.tsx` (push 3s after changes, pull on focus + every 60s), `components/ClaudeConnector.tsx` (Settings).
+- Accounts (step 0 of the full-MCP plan; Supabase migration `0002_accounts.sql`):
+  - Google sign-in done server-side (`lib/server/auth.ts`, `/auth/login|callback|logout`), httpOnly cookies, no Supabase key in the browser. `/api/test-login` exists only with `WML_TEST_LOGIN=1` outside production (automated tests).
+  - Server is the source of truth: `user_state` (one JSONB doc + version per user). Every change is an `Op` applied by `applyOp` in `lib/ops.ts` — shared by the browser store, the in-app assistant and the claude.ai connector; the server re-applies it (`lib/server/state.ts`, `wml_commit` RPC: version check, idempotent `requestId`, audit row with before-state, undo).
+  - `lib/store.tsx`: optimistic ops + `/api/ops`, poll `/api/state?since=` every 5s; `assistant` = same actions recorded as actor "assistant". `AccountGate` shows sign-in / first-time setup (import browser data, demo, empty).
+  - Keys/tokens: AES-256-GCM with `WML_ENCRYPTION_KEY` (`lib/server/secrets.ts`, `/api/secrets`); state only has `keySaved/keyProvider/keyLast4`, `mcp[].hasToken`. `/api/agent` and `/api/mcp` require sign-in and load saved secrets.
+  - Connector: `/api/connector` (make/rotate/delete URL), token hash -> user in `connector_tokens`; writes apply instantly (actor "claude"), plus `undo_last_change`.
+- Appearance: theme tokens in `globals.css` (`:root` dark, `[data-theme=light]`), surfaces mix with `--panel-alpha` for glass; `components/Appearance.tsx` (`AppearanceLayer` in layout, `AppearanceSettings` in Settings), constants in `lib/appearance.ts`, early theme script in `layout.tsx`. Uploaded background image stays on the device (IndexedDB); everything else syncs in `settings.appearance`. Use theme colours (`bg-bg`, `text-on-ink`, `bg-scrim`, `var(--color-*)` in SVG), never raw black/white/hex.
 - After deleting a page, a stale `.next/types/app/<page>` can break `tsc` and the check build (`NEXT_DIST_DIR=.next-check npx next build`); delete that generated folder.
 
 ## Design

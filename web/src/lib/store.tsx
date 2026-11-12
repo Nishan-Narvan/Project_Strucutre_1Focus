@@ -149,7 +149,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const p = pending.current[0];
         let res: Response;
         try {
-          res = await fetch("/api/ops", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) });
+          const body = JSON.stringify(p);
+          // keepalive lets a change finish sending even if the page is closing (browsers allow it for small requests)
+          res = await fetch("/api/ops", { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: body.length < 60000 });
         } catch {
           // Offline: try again shortly. The request id stops a retry from applying twice.
           setNotice("Can't reach the server. Your change is waiting and will be saved when the connection is back.");

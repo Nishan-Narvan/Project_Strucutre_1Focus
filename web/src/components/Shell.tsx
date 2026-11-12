@@ -14,7 +14,7 @@ export function Logo({ className = "" }: { className?: string }) {
       <path d="M4 20 C 4 12, 20 14, 20 6" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" />
       <circle cx="4" cy="20" r="2" fill="currentColor" />
       <circle cx="12" cy="13" r="2" fill="currentColor" />
-      <circle cx="20" cy="5" r="2.4" fill="#bfe9ff" style={{ filter: "drop-shadow(0 0 3px #bfe9ff)" }} />
+      <circle cx="20" cy="5" r="2.4" fill="var(--color-crystal)" style={{ filter: "drop-shadow(0 0 3px var(--glow))" }} />
     </svg>
   );
 }
@@ -39,7 +39,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[216px_1fr]">
-      <aside className="sticky top-0 z-20 border-b border-line bg-black md:h-dvh md:border-r md:border-b-0">
+      <aside className="sticky top-0 z-20 border-b border-line bg-bg md:h-dvh md:border-r md:border-b-0">
         <Link href="/goals" className="flex items-center gap-2.5 px-5 py-4 md:py-6">
           <Logo className="h-6 w-6 text-ink" />
           <span className="font-serif text-xl leading-none whitespace-nowrap">Where MyLife</span>

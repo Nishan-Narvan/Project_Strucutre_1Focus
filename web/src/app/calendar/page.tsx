@@ -46,7 +46,7 @@ export default function CalendarPage() {
       <div className="mb-3 flex flex-wrap gap-3 text-xs">
         {state.goals.map((g) => (
           <span key={g.id} className="flex items-center gap-1.5 text-muted">
-            <span className="h-2.5 w-2.5 rounded-full" style={{ background: g.color }} /> {g.title}
+            <span className="h-2.5 w-2.5 rounded-full ring-1 ring-line" style={{ background: g.color }} /> {g.title}
           </span>
         ))}
       </div>
@@ -71,7 +71,7 @@ export default function CalendarPage() {
                     <div
                       key={x.goalId}
                       className={`truncate rounded px-1.5 py-0.5 text-[10px] ${x.done ? "line-through opacity-60" : ""} ${!x.done && d < t ? "ring-1 ring-bad" : ""}`}
-                      style={{ background: `${x.color}26`, color: x.color }}
+                      style={{ background: `${x.color}26`, borderLeft: `2px solid ${x.color}` }}
                       title={`${x.title} · ${fmtDuration(x.minutes)}`}
                     >
                       {fmtDuration(x.minutes)} · {x.title}

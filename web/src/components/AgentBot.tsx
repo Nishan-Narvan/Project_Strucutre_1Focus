@@ -25,24 +25,24 @@ export function BotFace({ mood = "idle", className = "" }: { mood?: Mood; classN
   const lit = mood === "thinking";
   return (
     <svg viewBox="0 0 48 48" className={className} aria-hidden>
-      <line x1="24" y1="10" x2="24" y2="5.5" stroke="#f4f4f4" strokeWidth="2" strokeLinecap="round" />
-      <circle cx="24" cy="4.5" r="2.4" fill={mood === "asleep" ? "#4a4a4a" : "#bfe9ff"} className={lit ? "glow-pulse" : undefined} style={mood === "asleep" ? undefined : { filter: "drop-shadow(0 0 3px #bfe9ff)" }} />
-      <rect x="3" y="19" width="4" height="9" rx="2" fill="#f4f4f4" />
-      <rect x="41" y="19" width="4" height="9" rx="2" fill="#f4f4f4" />
-      <rect x="7" y="10" width="34" height="27" rx="10" fill="#161616" stroke="#f4f4f4" strokeWidth="2" />
+      <line x1="24" y1="10" x2="24" y2="5.5" stroke="var(--color-ink)" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="24" cy="4.5" r="2.4" fill={mood === "asleep" ? "var(--color-faint)" : "var(--color-crystal)"} className={lit ? "glow-pulse" : undefined} style={mood === "asleep" ? undefined : { filter: "drop-shadow(0 0 3px var(--glow))" }} />
+      <rect x="3" y="19" width="4" height="9" rx="2" fill="var(--color-ink)" />
+      <rect x="41" y="19" width="4" height="9" rx="2" fill="var(--color-ink)" />
+      <rect x="7" y="10" width="34" height="27" rx="10" fill="var(--color-panel-2)" stroke="var(--color-ink)" strokeWidth="2" />
       {mood === "asleep" ? (
         <>
-          <path d="M14 22.5 q3.5 3 7 0" stroke="#f4f4f4" strokeWidth="2" fill="none" strokeLinecap="round" />
-          <path d="M27 22.5 q3.5 3 7 0" stroke="#f4f4f4" strokeWidth="2" fill="none" strokeLinecap="round" />
+          <path d="M14 22.5 q3.5 3 7 0" stroke="var(--color-ink)" strokeWidth="2" fill="none" strokeLinecap="round" />
+          <path d="M27 22.5 q3.5 3 7 0" stroke="var(--color-ink)" strokeWidth="2" fill="none" strokeLinecap="round" />
         </>
       ) : (
-        <g className="bot-blink" fill={lit ? "#bfe9ff" : "#f4f4f4"} style={lit ? { filter: "drop-shadow(0 0 3px #bfe9ff)" } : undefined}>
+        <g className="bot-blink" fill={lit ? "var(--color-crystal)" : "var(--color-ink)"} style={lit ? { filter: "drop-shadow(0 0 3px var(--glow))" } : undefined}>
           <circle cx="17.5" cy="22" r="3.4" />
           <circle cx="30.5" cy="22" r="3.4" />
         </g>
       )}
-      <path d="M19.5 29.5 q4.5 3.4 9 0" stroke="#f4f4f4" strokeWidth="2" fill="none" strokeLinecap="round" />
-      <rect x="16" y="39.5" width="16" height="4.5" rx="2.2" fill="#f4f4f4" />
+      <path d="M19.5 29.5 q4.5 3.4 9 0" stroke="var(--color-ink)" strokeWidth="2" fill="none" strokeLinecap="round" />
+      <rect x="16" y="39.5" width="16" height="4.5" rx="2.2" fill="var(--color-ink)" />
     </svg>
   );
 }
@@ -169,7 +169,7 @@ export function AgentBot() {
         <div
           role="dialog"
           aria-label="Assistant"
-          className={`fixed inset-x-3 top-3 bottom-24 z-40 flex flex-col overflow-hidden rounded-[18px] border border-line bg-black shadow-2xl shadow-black sm:top-auto sm:right-5 sm:left-auto ${
+          className={`fixed inset-x-3 top-3 bottom-24 z-40 flex flex-col overflow-hidden rounded-[18px] border border-line bg-bg shadow-2xl shadow-black sm:top-auto sm:right-5 sm:left-auto ${
             big ? "sm:h-[calc(100dvh-7.5rem)] sm:w-[min(720px,calc(100vw-2.5rem))]" : "sm:h-[min(640px,calc(100dvh-7.5rem))] sm:w-[400px]"
           }`}
         >
@@ -315,7 +315,7 @@ export function AgentBot() {
 
 function Turn({ turn: m, onRetry, onSettings }: { turn: AgentTurn; onRetry?: () => void; onSettings: () => void }) {
   if (m.role === "user")
-    return <div className="ml-auto w-fit max-w-[88%] rounded-[14px] bg-ink px-3.5 py-2 text-[15px] leading-relaxed break-words whitespace-pre-wrap text-black">{m.text}</div>;
+    return <div className="ml-auto w-fit max-w-[88%] rounded-[14px] bg-ink px-3.5 py-2 text-[15px] leading-relaxed break-words whitespace-pre-wrap text-on-ink">{m.text}</div>;
   const figures = m.check ? m.check.found + m.check.missing.length : 0;
   return (
     <div className="max-w-[94%]">
@@ -357,7 +357,7 @@ function Turn({ turn: m, onRetry, onSettings }: { turn: AgentTurn; onRetry?: () 
 function inline(text: string): ReactNode[] {
   return text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((part, i) =>
     part.startsWith("**") && part.endsWith("**") ? <strong key={i} className="font-semibold">{part.slice(2, -2)}</strong>
-    : part.startsWith("`") && part.endsWith("`") && part.length > 2 ? <code key={i} className="rounded bg-black px-1 py-0.5 text-[13px]">{part.slice(1, -1)}</code>
+    : part.startsWith("`") && part.endsWith("`") && part.length > 2 ? <code key={i} className="rounded bg-bg px-1 py-0.5 text-[13px]">{part.slice(1, -1)}</code>
     : part,
   );
 }

@@ -243,7 +243,7 @@ function SideButton({ dir, href, label }: { dir: "prev" | "next"; href: string; 
       href={href}
       aria-label={label}
       title={label}
-      className={`fixed top-1/2 z-30 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full border border-line bg-black/80 text-ink transition hover:border-muted hover:bg-panel-2 ${
+      className={`fixed top-1/2 z-30 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full border border-line bg-bg/80 text-ink transition hover:border-muted hover:bg-panel-2 ${
         dir === "prev" ? "left-2 md:left-[228px]" : "right-2 md:right-4"
       }`}
     >
@@ -261,17 +261,17 @@ function Ring({ ratio, current }: { ratio: number; current: boolean }) {
   return (
     <div className="relative mx-auto aspect-square w-[min(80vw,380px)]" role="img" aria-label={`${Math.round(ratio * 100)}% complete`}>
       <svg viewBox="0 0 320 320" className="h-full w-full -rotate-90">
-        <circle cx="160" cy="160" r={r} stroke="#161616" strokeWidth="14" fill="none" />
+        <circle cx="160" cy="160" r={r} stroke="var(--color-panel-2)" strokeWidth="14" fill="none" />
         <circle
           cx="160"
           cy="160"
           r={r}
-          stroke={current ? "#bfe9ff" : "#f4f4f4"}
+          stroke={current ? "var(--color-crystal)" : "var(--color-ink)"}
           strokeWidth="14"
           fill="none"
           strokeLinecap="round"
           strokeDasharray={`${c * ratio} ${c}`}
-          style={current ? { filter: "drop-shadow(0 0 10px rgba(191,233,255,0.7))" } : undefined}
+          style={current ? { filter: "drop-shadow(0 0 10px var(--glow))" } : undefined}
         />
       </svg>
       <div className="absolute inset-0 grid place-items-center text-center">

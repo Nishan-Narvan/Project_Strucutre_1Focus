@@ -37,19 +37,19 @@ export function Road({ goal, selected, onSelect }: { goal: Goal; selected: numbe
             </filter>
           </defs>
           {/* the road bed */}
-          <path d={full} stroke="#161616" strokeWidth="26" fill="none" strokeLinecap="round" />
+          <path d={full} stroke="var(--color-panel-2)" strokeWidth="26" fill="none" strokeLinecap="round" />
           {pts.slice(0, -1).map((_, i) => {
             const done = p.modules[i].ratio >= 1;
             const current = i === p.currentModule && !done;
-            if (done) return <path key={i} d={seg(i)} stroke="#f4f4f4" strokeWidth="3" fill="none" strokeLinecap="round" />;
+            if (done) return <path key={i} d={seg(i)} stroke="var(--color-ink)" strokeWidth="3" fill="none" strokeLinecap="round" />;
             if (current)
               return (
                 <g key={i} filter="url(#crystal-glow)">
-                  <path d={seg(i)} stroke="#bfe9ff" strokeOpacity="0.35" strokeWidth="3" fill="none" />
-                  <path d={seg(i)} className="road-flow" stroke="#bfe9ff" strokeWidth="3" fill="none" strokeLinecap="round" />
+                  <path d={seg(i)} stroke="var(--color-crystal)" strokeOpacity="0.35" strokeWidth="3" fill="none" />
+                  <path d={seg(i)} className="road-flow" stroke="var(--color-crystal)" strokeWidth="3" fill="none" strokeLinecap="round" />
                 </g>
               );
-            return <path key={i} d={seg(i)} stroke="#4a4a4a" strokeWidth="2" strokeDasharray="1 9" fill="none" strokeLinecap="round" />;
+            return <path key={i} d={seg(i)} stroke="var(--color-faint)" strokeWidth="2" strokeDasharray="1 9" fill="none" strokeLinecap="round" />;
           })}
         </svg>
 
@@ -102,10 +102,10 @@ function Node({ index, done, current, selected }: { index: number; done: boolean
   return (
     <span
       className={`relative grid h-11 w-11 place-items-center rounded-full border text-sm transition ${
-        done ? "border-ink bg-ink text-black" : current ? "crystal-ring border-crystal bg-black text-crystal" : "border-faint bg-black text-muted"
+        done ? "border-ink bg-ink text-on-ink" : current ? "crystal-ring border-crystal bg-bg text-crystal" : "border-faint bg-bg text-muted"
       } ${selected ? "ring-2 ring-ink ring-offset-4 ring-offset-panel" : ""}`}
     >
-      {current && <span className="glow-pulse absolute inset-0 rounded-full shadow-[0_0_28px_6px_rgba(191,233,255,0.35)]" />}
+      {current && <span className="glow-pulse absolute inset-0 rounded-full shadow-[0_0_28px_6px_var(--glow-soft)]" />}
       {done ? (
         <svg viewBox="0 0 16 16" className="h-4 w-4">
           <path d="M3.5 8.5l3 3 6-6.5" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
@@ -119,7 +119,7 @@ function Node({ index, done, current, selected }: { index: number; done: boolean
 
 function Finish({ done }: { done: boolean }) {
   return (
-    <span className={`grid h-8 w-8 place-items-center rounded-md border ${done ? "border-ink bg-ink text-black" : "border-faint text-faint"}`} aria-hidden>
+    <span className={`grid h-8 w-8 place-items-center rounded-md border ${done ? "border-ink bg-ink text-on-ink" : "border-faint text-faint"}`} aria-hidden>
       <svg viewBox="0 0 16 16" className="h-4 w-4">
         <path d="M4 14V2.5M4 3h7.5l-1.8 2.8L11.5 8.5H4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinejoin="round" />
       </svg>

@@ -59,7 +59,7 @@ export function Timeline({ date, className = "h-[68vh]" }: { date: string; class
           <div
             key={b.id}
             className={`absolute overflow-hidden rounded-md px-2.5 py-1 text-xs ${
-              b.kind === "event" ? "left-[58%] right-2 z-[1] border border-dashed border-muted bg-black text-ink" : "left-16 right-2 bg-panel-2 text-muted"
+              b.kind === "event" ? "left-[58%] right-2 z-[1] border border-dashed border-muted bg-bg text-ink" : "left-16 right-2 bg-panel-2 text-muted"
             }`}
             style={{ top: b.start * PX + 1, height: Math.max(18, (b.end - b.start) * PX - 2) }}
           >
@@ -83,7 +83,7 @@ export function Timeline({ date, className = "h-[68vh]" }: { date: string; class
         {isToday && (
           <div className="pointer-events-none absolute inset-x-0 z-10 flex items-center" style={{ top: now * PX }}>
             <span className="crystal-dot ml-[58px] h-2 w-2 rounded-full" />
-            <div className="h-px flex-1 bg-crystal shadow-[0_0_8px_#bfe9ff]" />
+            <div className="h-px flex-1 bg-crystal shadow-[0_0_8px_var(--color-crystal)]" />
           </div>
         )}
       </div>
