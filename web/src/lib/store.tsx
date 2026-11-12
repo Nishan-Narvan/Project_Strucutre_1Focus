@@ -1,20 +1,29 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { createDemoState } from "./demo";
 import { today, uid } from "./date";
-import { buildSessions } from "./schedule";
-import { isEditable, RULES } from "./rules";
-import type { AgentTurn, AppState, DayEvent, Goal, Memory, MemoryKind, Routine, Settings, Task } from "./types";
+import { applyOp, emptyState, OpError, type Op } from "./ops";
+import type { AgentTurn, AppState, DayEvent, Goal, MemoryKind, Memory, Routine, Settings, Task } from "./types";
 
-// P0: demo state lives in localStorage. P1 swaps these actions for Supabase calls.
-const KEY = "pathwise.demo.v2";
-const MAX_CHAT_TURNS = 80;
-const MAX_PAST_CHATS = 40;
+/**
+ * The person's data, held on the server for their account and mirrored here.
+ *
+ * Each action becomes an op (see lib/ops.ts). It is applied here straight away so the screen
+ * responds instantly, then sent to the server, which re-applies it to its own latest copy with
+ * the same rules. While ops are on their way, the screen shows the server's last answer with the
+ * waiting ops replayed on top. Changes made elsewhere (Claude, another device) are picked up by
+ * a light poll every few seconds and whenever the window regains focus.
+ */
 
-interface Store {
-  state: AppState;
-  ready: boolean;
+/** Where the browser kept everything before accounts. Read once, for importing. */
+export const LEGACY_KEY = "pathwise.demo.v2";
+const POLL_MS = 5000;
+const RETRY_MS = 3000;
+
+export type Status = "loading" | "unconfigured" | "signedOut" | "setup" | "ready" | "error";
+export type Actor = "web" | "assistant";
+
+interface Actions {
   /** Mark one session complete with the learner's note. */
   completeSession: (goalId: string, sessionId: string, note: string) => void;
   /** Mark every remaining session of a task complete with one note. */
@@ -22,11 +31,11 @@ interface Store {
   reopenSession: (goalId: string, sessionId: string) => void;
   reopenTask: (goalId: string, taskId: string) => void;
   reschedule: (goalId: string) => void;
-  /** Always allowed (up to the per-module limit). */
+  /** Allowed up to the per-phase limit. Returns false when the rules refuse it. */
   addTask: (goalId: string, moduleIndex: number, task: Omit<Task, "id">) => boolean;
   /** Only allowed inside the edit window. */
   removeTask: (goalId: string, taskId: string) => boolean;
-  addGoal: (goal: Goal) => void;
+  addGoal: (goal: Goal) => boolean;
   deleteGoal: (goalId: string) => void;
   upsertRoutine: (r: Routine) => void;
   deleteRoutine: (id: string) => void;
@@ -36,123 +45,283 @@ interface Store {
   /** Returns false when the same memory is already saved. */
   addMemory: (kind: MemoryKind, text: string, source?: Memory["source"]) => boolean;
   deleteMemory: (id: string) => void;
-  /** Replace the conversation with the agent. */
+  /** Replace the conversation with the assistant. */
   saveChat: (turns: AgentTurn[]) => void;
-  /** Start a fresh conversation. The old one is filed away where the agent can still look things up. */
+  /** Start a fresh conversation. The old one is filed away where the assistant can still look things up. */
   newChat: () => void;
   resetDemo: () => void;
 }
 
+interface Store extends Actions {
+  state: AppState;
+  /** True once the account's data is loaded. */
+  ready: boolean;
+  status: Status;
+  user: { id: string; email: string } | null;
+  /** Problem to show the person (a refused change, a lost connection). */
+  notice: string | null;
+  dismissNotice: () => void;
+  /** Changes still on their way to the server. */
+  saving: boolean;
+  /** The same actions, recorded in the change history as made by the in-app assistant. */
+  assistant: Actions;
+  /** Reverse the most recent change, whoever made it. */
+  undo: () => Promise<string>;
+  /** Create the account's data the first time: import this browser's data, start from the demo, or start empty. */
+  setup: (mode: "import" | "demo" | "empty") => Promise<void>;
+  /** Data saved in this browser before accounts, if any. */
+  legacy: AppState | null;
+}
+
+interface Pending {
+  op: Op;
+  requestId: string;
+  actor: Actor;
+}
+
 const Ctx = createContext<Store | null>(null);
 
-export function StoreProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AppState>(() => ({ goals: [], routines: [], events: [], settings: createDemoState().settings, memories: [], chat: [], pastChats: [] }));
-  const [ready, setReady] = useState(false);
-  // Lets an action report on the latest state without waiting for a re-render
-  const live = useRef(state);
-  live.current = state;
+const browserTimezone = () => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+};
 
-  useEffect(() => {
-    let loaded: AppState | null = null;
-    try {
-      const raw = localStorage.getItem(KEY);
-      if (raw) loaded = JSON.parse(raw);
-    } catch {}
-    const fresh = createDemoState();
-    // Older saved states predate the agent: fill in what they lack
-    setState(loaded ? { ...fresh, ...loaded, settings: { ...fresh.settings, ...loaded.settings }, memories: loaded.memories ?? [], chat: loaded.chat ?? [] } : fresh);
-    setReady(true);
+function readLegacy(): AppState | null {
+  try {
+    const raw = localStorage.getItem(LEGACY_KEY);
+    const s = raw ? (JSON.parse(raw) as AppState) : null;
+    return s && Array.isArray(s.goals) ? s : null;
+  } catch {
+    return null;
+  }
+}
+
+export function StoreProvider({ children }: { children: ReactNode }) {
+  const [status, setStatus] = useState<Status>("loading");
+  const [user, setUser] = useState<Store["user"]>(null);
+  const [view, setView] = useState<AppState>(emptyState);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [legacy, setLegacy] = useState<AppState | null>(null);
+
+  // The server's last answer, the ops not yet confirmed, and what the screen shows (kept in refs so
+  // several actions in a row, as the assistant does, each see the result of the one before)
+  const confirmed = useRef<{ state: AppState; version: number }>({ state: emptyState(), version: 0 });
+  const pending = useRef<Pending[]>([]);
+  const local = useRef<AppState>(view);
+  const sending = useRef(false);
+
+  const recompute = useCallback(() => {
+    let s = confirmed.current.state;
+    const t = today();
+    // Replay waiting ops on the newest server copy; one that no longer applies is dropped
+    pending.current = pending.current.filter((p) => {
+      try {
+        s = applyOp(s, p.op, { t });
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    local.current = s;
+    setView(s);
+    setSaving(pending.current.length > 0);
   }, []);
 
-  useEffect(() => {
-    if (!ready) return;
-    try {
-      localStorage.setItem(KEY, JSON.stringify(state));
-    } catch {}
-  }, [state, ready]);
-
-  const mapGoal = useCallback(
-    (goalId: string, fn: (g: Goal) => Goal) => setState((s) => ({ ...s, goals: s.goals.map((g) => (g.id === goalId ? fn(g) : g)) })),
-    [],
+  const accept = useCallback(
+    (data: { state: AppState; version: number }) => {
+      if (data.version < confirmed.current.version) return;
+      confirmed.current = { state: data.state, version: data.version };
+      recompute();
+    },
+    [recompute],
   );
 
-  const store = useMemo<Store>(() => {
-    const find = (id: string) => state.goals.find((g) => g.id === id);
-    return {
-      state,
-      ready,
-      completeSession: (goalId, sessionId, note) =>
-        mapGoal(goalId, (g) => ({
-          ...g,
-          sessions: g.sessions.map((x) => (x.id === sessionId ? { ...x, done: true, doneAt: new Date().toISOString(), note: note.trim() || undefined } : x)),
-        })),
-      completeTask: (goalId, taskId, note) => {
-        const at = new Date().toISOString();
-        mapGoal(goalId, (g) => ({
-          ...g,
-          sessions: g.sessions.map((x) => (x.taskId === taskId && !x.done ? { ...x, done: true, doneAt: at, note: note.trim() || undefined } : x)),
-        }));
-      },
-      reopenSession: (goalId, sessionId) =>
-        mapGoal(goalId, (g) => ({ ...g, sessions: g.sessions.map((x) => (x.id === sessionId ? { ...x, done: false, doneAt: undefined, note: undefined } : x)) })),
-      reopenTask: (goalId, taskId) =>
-        mapGoal(goalId, (g) => ({ ...g, sessions: g.sessions.map((x) => (x.taskId === taskId ? { ...x, done: false, doneAt: undefined, note: undefined } : x)) })),
-      reschedule: (goalId) => mapGoal(goalId, (g) => ({ ...g, sessions: buildSessions(g, today()) })),
-      addTask: (goalId, moduleIndex, task) => {
-        const g = find(goalId);
-        if (!g || g.roadmap.modules[moduleIndex].tasks.length >= RULES.maxTasksPerModule) return false;
-        mapGoal(goalId, (g) => {
-          const modules = g.roadmap.modules.map((m, i) => (i === moduleIndex ? { ...m, tasks: [...m.tasks, { ...task, id: `${m.id}x${uid()}` }] } : m));
-          const next = { ...g, roadmap: { ...g.roadmap, modules } };
-          return { ...next, sessions: buildSessions(next, today()) };
-        });
-        return true;
-      },
-      removeTask: (goalId, taskId) => {
-        const g = find(goalId);
-        if (!g || !isEditable(g)) return false;
-        mapGoal(goalId, (g) => {
-          const modules = g.roadmap.modules.map((m) => ({ ...m, tasks: m.tasks.filter((t) => t.id !== taskId) }));
-          const next = { ...g, roadmap: { ...g.roadmap, modules }, sessions: g.sessions.filter((s) => s.taskId !== taskId) };
-          return { ...next, sessions: buildSessions(next, today()) };
-        });
-        return true;
-      },
-      addGoal: (goal) => setState((s) => ({ ...s, goals: [...s.goals, goal] })),
-      deleteGoal: (goalId) => setState((s) => ({ ...s, goals: s.goals.filter((g) => g.id !== goalId) })),
-      upsertRoutine: (r) =>
-        setState((s) => ({
-          ...s,
-          routines: s.routines.some((x) => x.id === r.id) ? s.routines.map((x) => (x.id === r.id ? r : x)) : [...s.routines, r],
-        })),
-      deleteRoutine: (id) => setState((s) => ({ ...s, routines: s.routines.filter((x) => x.id !== id) })),
-      addEvent: (e) => setState((s) => ({ ...s, events: [...s.events, { ...e, id: uid() }] })),
-      deleteEvent: (id) => setState((s) => ({ ...s, events: s.events.filter((x) => x.id !== id) })),
-      saveSettings: (patch) => setState((s) => ({ ...s, settings: { ...s.settings, ...patch } })),
-      addMemory: (kind, text, source = "agent") => {
-        const clean = text.trim();
-        if (!clean || live.current.memories.some((m) => m.text.toLowerCase() === clean.toLowerCase())) return false;
-        const next = { ...live.current, memories: [...live.current.memories, { id: uid(), kind, text: clean, source, createdAt: today() }] };
-        live.current = next;
-        setState((s) => ({ ...s, memories: next.memories }));
-        return true;
-      },
-      deleteMemory: (id) => {
-        live.current = { ...live.current, memories: live.current.memories.filter((m) => m.id !== id) };
-        setState((s) => ({ ...s, memories: s.memories.filter((m) => m.id !== id) }));
-      },
-      // Only the recent conversation is kept, so browser storage cannot fill up
-      saveChat: (turns) => setState((s) => ({ ...s, chat: turns.slice(-MAX_CHAT_TURNS) })),
-      newChat: () =>
-        setState((s) => {
-          const turns = s.chat.filter((c) => !c.error && c.text).map((c) => ({ role: c.role, text: c.text.slice(0, 1500) }));
-          if (turns.length < 2) return { ...s, chat: [] };
-          return { ...s, chat: [], pastChats: [...s.pastChats, { id: uid(), endedAt: today(), turns }].slice(-MAX_PAST_CHATS) };
-        }),
-      // The model settings and key are the person's own, not demo data, so a reset keeps them
-      resetDemo: () => setState((s) => ({ ...createDemoState(), settings: s.settings })),
+  /** Send waiting ops one at a time, in order. */
+  const flush = useCallback(async () => {
+    if (sending.current) return;
+    sending.current = true;
+    try {
+      while (pending.current.length) {
+        const p = pending.current[0];
+        let res: Response;
+        try {
+          res = await fetch("/api/ops", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) });
+        } catch {
+          // Offline: try again shortly. The request id stops a retry from applying twice.
+          setNotice("Can't reach the server. Your change is waiting and will be saved when the connection is back.");
+          await new Promise((r) => setTimeout(r, RETRY_MS));
+          continue;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          setStatus("signedOut");
+          return;
+        }
+        pending.current = pending.current.filter((x) => x !== p);
+        if (res.ok) {
+          setNotice((n) => (n?.startsWith("Can't reach") ? null : n));
+          accept(data);
+        } else {
+          setNotice(data.error || "A change could not be saved.");
+          recompute();
+        }
+      }
+    } finally {
+      sending.current = false;
+    }
+  }, [accept, recompute]);
+
+  /** Apply an op here at once and queue it for the server. Returns false when the rules refuse it. */
+  const dispatch = useCallback(
+    (op: Op, actor: Actor): boolean => {
+      let next: AppState;
+      try {
+        next = applyOp(local.current, op, { t: today() });
+      } catch (e) {
+        if (e instanceof OpError) {
+          if (actor === "web") setNotice(e.message);
+          return false;
+        }
+        throw e;
+      }
+      if (next === local.current) return false; // nothing changed (a duplicate)
+      pending.current.push({ op, requestId: uid() + uid(), actor });
+      local.current = next;
+      setView(next);
+      setSaving(true);
+      void flush();
+      return true;
+    },
+    [flush],
+  );
+
+  const load = useCallback(
+    async (since?: number) => {
+      let res: Response;
+      try {
+        res = await fetch(`/api/state${since ? `?since=${since}` : ""}`, { cache: "no-store" });
+      } catch {
+        if (!since) setStatus("error");
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) return setStatus("signedOut");
+      if (res.status === 503 && data.configured === false) return setStatus("unconfigured");
+      if (!res.ok) {
+        if (!since) {
+          setNotice(data.error || "Could not load your data.");
+          setStatus("error");
+        }
+        return;
+      }
+      if (data.user) setUser(data.user);
+      if (data.needsSetup) {
+        setLegacy(readLegacy());
+        return setStatus("setup");
+      }
+      if (data.unchanged) return;
+      accept(data);
+      setStatus("ready");
+    },
+    [accept],
+  );
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // Pick up changes made elsewhere: every few seconds while visible, and on returning to the tab
+  useEffect(() => {
+    if (status !== "ready") return;
+    const tick = () => {
+      if (document.visibilityState === "visible" && !pending.current.length) void load(confirmed.current.version);
     };
-  }, [state, ready, mapGoal]);
+    const timer = setInterval(tick, POLL_MS);
+    window.addEventListener("focus", tick);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", tick);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, [status, load]);
+
+  // Let the server know the person's time zone, so "today" is right for changes made from Claude
+  useEffect(() => {
+    if (status !== "ready") return;
+    const tz = browserTimezone();
+    if (confirmed.current.state.settings.timezone !== tz)
+      void fetch("/api/state", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ timezone: tz }) }).then(() => load(confirmed.current.version));
+  }, [status, load]);
+
+  const store = useMemo<Store>(() => {
+    const make = (actor: Actor): Actions => ({
+      completeSession: (goalId, sessionId, note) => void dispatch({ type: "complete_session", goalId, sessionId, note, at: new Date().toISOString() }, actor),
+      completeTask: (goalId, taskId, note) => void dispatch({ type: "complete_task", goalId, taskId, note, at: new Date().toISOString() }, actor),
+      reopenSession: (goalId, sessionId) => void dispatch({ type: "reopen_session", goalId, sessionId }, actor),
+      reopenTask: (goalId, taskId) => void dispatch({ type: "reopen_task", goalId, taskId }, actor),
+      reschedule: (goalId) => void dispatch({ type: "reschedule_goal", goalId }, actor),
+      addTask: (goalId, moduleIndex, task) => {
+        const m = local.current.goals.find((g) => g.id === goalId)?.roadmap.modules[moduleIndex];
+        return dispatch({ type: "add_task", goalId, moduleIndex, task: { ...task, id: `${m?.id ?? "m"}x${uid()}` } }, actor);
+      },
+      removeTask: (goalId, taskId) => dispatch({ type: "remove_task", goalId, taskId }, actor),
+      addGoal: (goal) => dispatch({ type: "add_goal", goal }, actor),
+      deleteGoal: (goalId) => void dispatch({ type: "delete_goal", goalId }, actor),
+      upsertRoutine: (routine) => void dispatch({ type: "upsert_routine", routine }, actor),
+      deleteRoutine: (id) => void dispatch({ type: "delete_routine", id }, actor),
+      addEvent: (e) => void dispatch({ type: "add_event", event: { ...e, id: uid() } }, actor),
+      deleteEvent: (id) => void dispatch({ type: "delete_event", id }, actor),
+      saveSettings: (patch) => void dispatch({ type: "save_settings", patch }, actor),
+      addMemory: (kind, text, source = "agent") => dispatch({ type: "add_memory", memory: { id: uid(), kind, text, source, createdAt: today() } }, actor),
+      deleteMemory: (id) => void dispatch({ type: "delete_memory", id }, actor),
+      saveChat: (turns) => void dispatch({ type: "save_chat", turns }, actor),
+      newChat: () => void dispatch({ type: "new_chat", id: uid(), endedAt: today() }, actor),
+      resetDemo: () => void dispatch({ type: "reset_demo" }, actor),
+    });
+
+    return {
+      ...make("web"),
+      assistant: make("assistant"),
+      state: view,
+      ready: status === "ready",
+      status,
+      user,
+      notice,
+      dismissNotice: () => setNotice(null),
+      saving,
+      legacy,
+      undo: async () => {
+        await flush();
+        const res = await fetch("/api/ops", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ undo: true }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Could not undo.");
+        accept(data);
+        return String(data.undone ?? "");
+      },
+      setup: async (mode) => {
+        const res = await fetch("/api/state", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode, timezone: browserTimezone(), ...(mode === "import" ? { state: readLegacy() } : {}) }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Could not set up your data.");
+        // The browser copy (and any key in it) is now safely on the server
+        if (mode === "import") {
+          try {
+            localStorage.removeItem(LEGACY_KEY);
+          } catch {}
+        }
+        accept(data);
+        setStatus("ready");
+      },
+    };
+  }, [view, status, user, notice, saving, legacy, dispatch, flush, accept]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

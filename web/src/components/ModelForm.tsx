@@ -7,36 +7,50 @@ import { agentReady, PROVIDER_ORDER, PROVIDERS, rankModels } from "@/lib/provide
 import type { ProviderId } from "@/lib/types";
 
 /**
- * Pick a provider, paste a key, press Connect. Connecting checks the key, reads the
- * provider's models and sends a tiny test message to find one that really answers.
- * "Connected" is only shown after a real reply came back.
+ * Pick a provider, paste a key, press Connect. Connecting checks the key, reads the provider's
+ * models and sends a tiny test message to find one that really answers; only then is the key saved,
+ * encrypted, to the account. It never comes back to the browser, so it is entered once.
  * Used on the Settings page and inside the assistant window.
  */
 export function ModelForm({ compact = false }: { compact?: boolean }) {
   const { state, saveSettings } = useStore();
   const s = state.settings;
   const [provider, setProvider] = useState<ProviderId>(s.provider);
-  const [key, setKey] = useState(s.apiKey);
+  const [key, setKey] = useState("");
   const [baseUrl, setBaseUrl] = useState(s.baseUrl);
   const [show, setShow] = useState(false);
   const [models, setModels] = useState<string[]>([]);
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const P = PROVIDERS[provider];
-  const access = { provider, apiKey: key.trim(), baseUrl: baseUrl.trim() };
-  const connected = agentReady(s) && s.provider === provider && s.apiKey === key.trim();
+  const saved = agentReady(s) && s.provider === provider;
   const id = compact ? "bot" : "set";
 
   async function connect() {
-    if (!key.trim()) return setMsg({ text: "Paste your API key first.", bad: true });
+    // With no new key typed, re-test the saved one
+    const access = { provider, baseUrl: baseUrl.trim(), ...(key.trim() ? { apiKey: key.trim() } : {}) };
+    if (!key.trim() && !saved) return setMsg({ text: "Paste your API key first.", bad: true });
     setMsg(null);
     setBusy("Checking the key");
     const r = await connectModel(access, s.provider === provider ? s.model : "", setBusy);
+    if ("error" in r) {
+      setBusy("");
+      return setMsg({ text: r.error, bad: true });
+    }
+    if (key.trim()) {
+      setBusy("Saving the key to your account");
+      const res = await fetch("/api/secrets", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "model", provider, apiKey: key.trim(), baseUrl: baseUrl.trim() }) });
+      if (!res.ok) {
+        setBusy("");
+        const d = await res.json().catch(() => ({}));
+        return setMsg({ text: d.error || "The key works but could not be saved.", bad: true });
+      }
+    }
     setBusy("");
-    if ("error" in r) return setMsg({ text: r.error, bad: true });
     setModels(rankModels(provider, r.models));
-    saveSettings({ ...access, model: r.model, fallbacks: r.fallbacks });
-    setMsg({ text: `Connected. ${r.model} answered a test message.` });
+    saveSettings({ provider, baseUrl: baseUrl.trim(), model: r.model, fallbacks: r.fallbacks });
+    setKey("");
+    setMsg({ text: `Connected. ${r.model} answered a test message.${key.trim() ? " The key is saved to your account, encrypted." : ""}` });
   }
 
   /** A model picked by hand is tested before it replaces the working one. */
@@ -44,11 +58,19 @@ export function ModelForm({ compact = false }: { compact?: boolean }) {
     if (!model || model === s.model) return;
     setMsg(null);
     setBusy(`Testing ${model}`);
-    const r = await chatOnce(access, model, [{ role: "user", content: "Reply with the single word: ok" }], null);
+    const r = await chatOnce({ provider, baseUrl: s.baseUrl }, model, [{ role: "user", content: "Reply with the single word: ok" }], null);
     setBusy("");
     if (!r.ok) return setMsg({ text: `${model} did not answer, so ${s.model} stays. ${explain(r.status, r.error)}`, bad: true });
     saveSettings({ model, fallbacks: [s.model, ...(s.fallbacks ?? [])].filter((m) => m && m !== model).slice(0, 4) });
     setMsg({ text: `Now using ${model}.` });
+  }
+
+  async function remove() {
+    setBusy("Removing the key");
+    const res = await fetch("/api/secrets", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "model" }) });
+    setBusy("");
+    setModels([]);
+    setMsg(res.ok ? { text: "Key deleted from your account." } : { text: "Could not delete the key. Try again.", bad: true });
   }
 
   return (
@@ -60,10 +82,9 @@ export function ModelForm({ compact = false }: { compact?: boolean }) {
           className="input"
           value={provider}
           onChange={(e) => {
-            const p = e.target.value as ProviderId;
-            setProvider(p);
+            setProvider(e.target.value as ProviderId);
             setModels([]);
-            setKey(p === s.provider ? s.apiKey : "");
+            setKey("");
             setMsg(null);
           }}
         >
@@ -98,13 +119,13 @@ export function ModelForm({ compact = false }: { compact?: boolean }) {
             value={key}
             onChange={(e) => setKey(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !busy && connect()}
-            placeholder={P.keyHint}
+            placeholder={saved && s.keyLast4 ? `Saved: •••• ${s.keyLast4}. Paste a new key to replace it.` : P.keyHint}
           />
           <button type="button" className="btn shrink-0" onClick={() => setShow((x) => !x)}>{show ? "Hide" : "Show"}</button>
         </div>
       </div>
 
-      {connected && (
+      {saved && (
         <div>
           <label className="label" htmlFor={`${id}-model`}>Model</label>
           {models.length ? (
@@ -123,21 +144,10 @@ export function ModelForm({ compact = false }: { compact?: boolean }) {
 
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className="btn btn-primary" onClick={connect} disabled={Boolean(busy)}>
-          {busy ? `${busy}…` : connected ? "Test again and list models" : "Connect"}
+          {busy ? `${busy}…` : saved && !key.trim() ? "Test again and list models" : "Connect"}
         </button>
-        {connected && !busy && (
-          <button
-            type="button"
-            className="btn"
-            onClick={() => {
-              saveSettings({ apiKey: "", model: "", fallbacks: [] });
-              setKey("");
-              setModels([]);
-              setMsg({ text: "Key removed from this browser." });
-            }}
-          >
-            Remove key
-          </button>
+        {saved && !busy && (
+          <button type="button" className="btn" onClick={remove}>Delete saved key</button>
         )}
       </div>
       {msg && <p className={`text-sm break-words ${msg.bad ? "text-bad" : "text-muted"}`} role="status">{msg.text}</p>}

@@ -132,8 +132,14 @@ export interface Settings {
   webResearch: boolean;
   /** Outside services the agent can use, such as Google Calendar or Notion, reached over MCP. */
   mcp: McpServer[];
-  /** Lets claude.ai reach this data as a custom connector. The token is the secret part of the connector URL. */
+  /** Legacy: the connector token now lives server-side. Always stripped from stored data. */
   connector?: { token: string; lastSync?: string; error?: string };
+  /** A model key is saved on the server for `keyProvider`. The key itself never comes back to the browser. */
+  keySaved?: boolean;
+  keyProvider?: ProviderId;
+  keyLast4?: string;
+  /** IANA time zone, so the server knows what "today" is for the person. */
+  timezone?: string;
 }
 
 export interface McpTool {
@@ -148,8 +154,10 @@ export interface McpServer {
   id: string;
   name: string;
   url: string;
-  /** Optional bearer token. Kept in this browser only, like the model key. */
+  /** Legacy: tokens now live encrypted on the server and this is always "". */
   token: string;
+  /** A token for this connection is saved on the server. */
+  hasToken?: boolean;
   enabled: boolean;
   /** Tool list as of the last connect or refresh. */
   tools: McpTool[];

@@ -18,7 +18,8 @@ export interface Msg {
 }
 export type CallResult = { ok: true; message: Msg } | { ok: false; status: number; error: string; retryAfter?: number };
 
-type Access = Pick<Settings, "provider" | "apiKey" | "baseUrl">;
+/** Which provider to use. `apiKey` is only given to test a new key; otherwise the server uses the saved one. */
+type Access = Pick<Settings, "provider" | "baseUrl"> & { apiKey?: string };
 
 const post = async (body: unknown, signal?: AbortSignal) => fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
 

@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
 import { PROVIDERS } from "@/lib/providers";
 import { fail, publicHttpsUrl } from "@/lib/server/net";
+import { currentUser } from "@/lib/server/auth";
+import { loadSecrets, type Secrets } from "@/lib/server/secrets";
 import type { ProviderId } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /**
- * Thin, stateless relay between the browser and the user's model provider.
- * The key arrives with each request, is used once and is never stored or logged.
- *   { action: "models", provider, apiKey, baseUrl? }                    -> { models: string[] }
- *   { action: "chat", provider, apiKey, baseUrl?, model, messages, tools? } -> { message }
+ * Relay between the signed-in user and their model provider. The key is the one saved (encrypted)
+ * for the account; a request may carry an explicit key only to test a new one before it is saved.
+ * Keys are never logged.
+ *   { action: "models", provider, apiKey?, baseUrl? }                    -> { models: string[] }
+ *   { action: "chat", provider, apiKey?, baseUrl?, model, messages, tools? } -> { message }
  */
 
 function baseFor(provider: ProviderId, baseUrl: unknown): string | null {
@@ -30,16 +33,25 @@ function errorText(raw: string, status: number): string {
 }
 
 export async function POST(req: Request) {
+  const user = await currentUser().catch(() => null);
+  if (!user) return fail("You are signed out. Sign in again.", 401);
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== "object") return fail("Bad request.", 400);
-  const { action, provider, apiKey, baseUrl, model, messages, tools } = body as Record<string, unknown>;
+  const { action, provider, apiKey, model, messages, tools } = body as Record<string, unknown>;
+  let { baseUrl } = body as Record<string, unknown>;
 
   if (typeof provider !== "string" || !Object.hasOwn(PROVIDERS, provider)) return fail("Unknown provider.", 400);
-  if (typeof apiKey !== "string" || !apiKey.trim()) return fail("Add your API key in Settings first.", 400);
+  let key = typeof apiKey === "string" ? apiKey.trim() : "";
+  if (!key) {
+    const saved = (await loadSecrets(user.id).catch(() => ({}) as Secrets)).model;
+    if (!saved) return fail("No API key is saved. Connect a model in Settings.", 400);
+    if (saved.provider !== provider) return fail(`The saved key is for ${PROVIDERS[saved.provider].label}, not ${PROVIDERS[provider as ProviderId].label}. Connect again in Settings.`, 400);
+    key = saved.apiKey;
+    baseUrl = baseUrl || saved.baseUrl;
+  }
   const base = baseFor(provider as ProviderId, baseUrl);
   if (!base) return fail("The custom base URL must be a public https address.", 400);
 
-  const key = apiKey.trim();
   const headers: Record<string, string> = { "Content-Type": "application/json", Authorization: `Bearer ${key}` };
 
   try {

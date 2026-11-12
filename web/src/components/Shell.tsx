@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useStore } from "@/lib/store";
 import { AgentBot } from "@/components/AgentBot";
-import { ConnectorSync } from "@/components/ConnectorSync";
+import { AccountBox, AccountGate, Notice } from "@/components/AccountGate";
 
 /** Where MyLife mark: a path that bends through three waypoints, the last one lit. */
 export function Logo({ className = "" }: { className?: string }) {
@@ -30,6 +30,8 @@ const NAV = [
 export function Shell({ children }: { children: ReactNode }) {
   const path = usePathname();
   const { ready } = useStore();
+  // Until signed in and set up, the account screens replace the whole app
+  if (!ready) return <AccountGate />;
   const active = (n: (typeof NAV)[number]) => {
     if (n.href === "/today") return path === "/today" || path.startsWith("/day");
     return path.startsWith(n.href);
@@ -53,14 +55,14 @@ export function Shell({ children }: { children: ReactNode }) {
             </Link>
           ))}
         </nav>
-        <p className="hidden px-5 pt-6 text-xs leading-relaxed text-faint md:block">Your data stays in this browser, except what the assistant sends to your model when you ask.</p>
+        <AccountBox />
       </aside>
       {/* Bottom padding keeps page content clear of the assistant's button */}
       <main className="mx-auto w-full max-w-[1200px] px-4 pt-6 pb-28 md:px-10 md:pt-10">
-        {ready ? children : <div className="text-muted">Loading…</div>}
+        {children}
       </main>
-      {ready && <AgentBot />}
-      {ready && <ConnectorSync />}
+      <AgentBot />
+      <Notice />
     </div>
   );
 }

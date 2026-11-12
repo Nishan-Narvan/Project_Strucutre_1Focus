@@ -33,7 +33,13 @@ export function McpConnections() {
     setBusy(null);
     if ("error" in r) return setMsg({ text: r.error, bad: true });
     const name = f.name.trim() || host(url);
-    save([...servers, { id: uid(), name, url, token: f.token.trim(), enabled: true, tools: r.tools }]);
+    const id = uid();
+    // The token is saved encrypted to the account; the shared data only records that one exists
+    if (f.token.trim()) {
+      const res = await fetch("/api/secrets", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "mcp", serverId: id, token: f.token.trim() }) });
+      if (!res.ok) return setMsg({ text: "Connected, but the token could not be saved. Try again.", bad: true });
+    }
+    save([...servers, { id, name, url, token: "", hasToken: Boolean(f.token.trim()), enabled: true, tools: r.tools }]);
     setF({ name: "", url: "", token: "" });
     setMsg({ text: `Connected ${name}: ${r.tools.length} tool${r.tools.length === 1 ? "" : "s"} available to the assistant.` });
   }
@@ -41,7 +47,7 @@ export function McpConnections() {
   async function refresh(s: McpServer) {
     setBusy(s.id);
     setMsg(null);
-    const r = await listMcpTools(s.url, s.token);
+    const r = await listMcpTools(s.url, "", s.id);
     setBusy(null);
     if ("error" in r) return setMsg({ text: `${s.name}: ${r.error}`, bad: true });
     save(servers.map((x) => (x.id === s.id ? { ...x, tools: r.tools } : x)));
@@ -73,7 +79,10 @@ export function McpConnections() {
                 On
               </label>
               <button type="button" className="btn" disabled={busy === s.id} onClick={() => refresh(s)}>{busy === s.id ? "Checking…" : "Refresh tools"}</button>
-              <button type="button" className="btn" onClick={() => save(servers.filter((x) => x.id !== s.id))}>Remove</button>
+              <button type="button" className="btn" onClick={() => {
+                  save(servers.filter((x) => x.id !== s.id));
+                  if (s.hasToken) void fetch("/api/secrets", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "mcp", serverId: s.id }) });
+                }}>Remove</button>
             </li>
           ))}
         </ul>
@@ -101,7 +110,7 @@ export function McpConnections() {
       <ul className="list-disc space-y-1.5 pl-4 text-xs text-muted">
         <li>Works with MCP servers reached by an https URL, with an optional token. A bridge such as Zapier MCP gives you one URL and lets you choose which Google Calendar and Notion actions it offers.</li>
         <li>Servers that need an OAuth sign-in in the browser, such as Notion&apos;s own hosted server, are not supported yet.</li>
-        <li>A server URL or token lets its holder act on the accounts behind it. It is kept in this browser and treated like your model key.</li>
+        <li>A server URL or token lets its holder act on the accounts behind it. It is saved to your account encrypted, like your model key, and never shown again.</li>
         <li>The assistant asks you before it uses any tool that changes something.</li>
       </ul>
     </section>

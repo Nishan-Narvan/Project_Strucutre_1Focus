@@ -3,15 +3,17 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { fail, publicHttpsUrl } from "@/lib/server/net";
+import { currentUser } from "@/lib/server/auth";
+import { loadSecrets, type Secrets } from "@/lib/server/secrets";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /**
- * Stateless MCP client. Connects to a remote MCP server the person added, does one thing, disconnects.
- *   { action: "tools", url, token? }                  -> { tools: [{ name, description, inputSchema, readOnly }] }
- *   { action: "call", url, token?, name, arguments }  -> { text, isError }
- * The token arrives with each request and is never stored or logged.
+ * MCP client for the signed-in user. Connects to a remote MCP server they added, does one thing, disconnects.
+ *   { action: "tools", url, token? | serverId? }                  -> { tools: [{ name, description, inputSchema, readOnly }] }
+ *   { action: "call", url, token? | serverId?, name, arguments }  -> { text, isError }
+ * With serverId, the token saved (encrypted) for that connection is used. Tokens are never logged.
  */
 
 const MAX_RESULT = 12000;
@@ -64,14 +66,18 @@ function reason(e: unknown): { error: string; status: number } {
 }
 
 export async function POST(req: Request) {
+  const user = await currentUser().catch(() => null);
+  if (!user) return fail("You are signed out. Sign in again.", 401);
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== "object") return fail("Bad request.", 400);
-  const { action, url, token, name } = body as Record<string, unknown>;
+  const { action, url, token, name, serverId } = body as Record<string, unknown>;
   const args = (body as { arguments?: unknown }).arguments;
 
   const target = publicHttpsUrl(url);
   if (!target) return fail("The server URL must be a public https address.", 400);
-  const key = typeof token === "string" ? token.trim() : "";
+  // An explicit token is only sent while testing a new connection; otherwise use the saved one
+  let key = typeof token === "string" ? token.trim() : "";
+  if (!key && typeof serverId === "string") key = (await loadSecrets(user.id).catch(() => ({}) as Secrets)).mcp?.[serverId] ?? "";
 
   try {
     if (action === "tools") {

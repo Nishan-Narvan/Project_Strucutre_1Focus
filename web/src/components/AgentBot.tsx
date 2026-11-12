@@ -69,7 +69,7 @@ function IconBtn({ label, onClick, active, children }: { label: string; onClick:
  * The conversation keeps running if the window is closed.
  */
 export function AgentBot() {
-  const { state, saveChat, newChat, saveSettings, addMemory, deleteMemory, reschedule, addTask } = useStore();
+  const { state, saveChat, newChat, assistant } = useStore();
   const abort = useRef<AbortController | null>(null);
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<"chat" | "memory">("chat");
@@ -120,7 +120,7 @@ export function AgentBot() {
         history,
         question: q,
         t: today(),
-        actions: { addMemory, deleteMemory, reschedule, addTask, saveSettings },
+        actions: { addMemory: assistant.addMemory, deleteMemory: assistant.deleteMemory, reschedule: assistant.reschedule, addTask: assistant.addTask, saveSettings: assistant.saveSettings },
         onStep: (label) => {
           seen.push(label);
           setSteps([...seen]);

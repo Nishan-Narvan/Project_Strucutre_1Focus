@@ -67,7 +67,7 @@ export const PROVIDERS: Record<ProviderId, { label: string; base: string; keyUrl
 export const PROVIDER_ORDER: ProviderId[] = ["groq", "gemini", "openrouter", "openai", "anthropic", "custom"];
 
 /** True once a provider, key and model are set, so the assistant can be called. */
-export const agentReady = (s: Settings) => Boolean(s.apiKey && s.model && (s.provider !== "custom" || s.baseUrl));
+export const agentReady = (s: Settings) => Boolean(s.keySaved && s.keyProvider === s.provider && s.model && (s.provider !== "custom" || s.baseUrl));
 
 /** Models that are listed next to chat models but cannot hold a conversation. */
 const NOT_CHAT =

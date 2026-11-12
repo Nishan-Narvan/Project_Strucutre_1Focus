@@ -157,8 +157,9 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
           brainstorm: messages,
         };
         goal.sessions = buildSessions(goal, goal.startDate < t ? t : goal.startDate);
-        addGoal(goal);
-        router.push(`/goals/${goal.id}`);
+        // The rules may still refuse it (another device added a goal meanwhile); the reason is shown as a notice
+        if (addGoal(goal)) router.push(`/goals/${goal.id}`);
+        else setStage(null);
       }, at),
     );
   }

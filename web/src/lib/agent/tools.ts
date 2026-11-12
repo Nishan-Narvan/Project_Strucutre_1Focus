@@ -319,7 +319,7 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
       const res = await fetch("/api/mcp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "call", url: ref.server.url, token: ref.server.token, name: ref.tool.name, arguments: args }),
+        body: JSON.stringify({ action: "call", url: ref.server.url, serverId: ref.server.id, name: ref.tool.name, arguments: args }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return { label: `${ref.server.name} failed: ${ref.tool.name}`, result: { error: data.error || `Request failed with status ${res.status}.` } };
@@ -333,9 +333,10 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
 }
 
 /** Connect to an MCP server and read its tool list. */
-export async function listMcpTools(url: string, token: string): Promise<{ tools: McpTool[] } | { error: string }> {
+/** With `token`, tests a new connection; with `serverId`, uses the token saved for that connection. */
+export async function listMcpTools(url: string, token: string, serverId?: string): Promise<{ tools: McpTool[] } | { error: string }> {
   try {
-    const res = await fetch("/api/mcp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "tools", url, token }) });
+    const res = await fetch("/api/mcp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "tools", url, ...(token ? { token } : {}), ...(serverId ? { serverId } : {}) }) });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return { error: data.error || `Request failed with status ${res.status}.` };
     return { tools: data.tools ?? [] };
