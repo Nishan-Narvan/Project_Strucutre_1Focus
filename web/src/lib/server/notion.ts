@@ -50,7 +50,9 @@ export interface NDatabase {
   title: string;
   url: string;
   columns: string[];
-  rows: { id: string; url: string; cells: Record<string, string> }[];
+  /** Notion's type of each column (select, status, date, checkbox…), so views can group and format. */
+  types: Record<string, string>;
+  rows: { id: string; url: string; cells: Record<string, string>; icon?: string; cover?: string }[];
   more: boolean;
 }
 
@@ -233,18 +235,27 @@ async function database(token: string, id: string): Promise<NDatabase> {
   const db = await call(token, `/databases/${id}`);
   const title = plain(db.title) || "Untitled database";
   const source = (db.data_sources as Json[] | undefined)?.[0];
-  if (!source) return { id, title, url: String(db.url ?? ""), columns: [], rows: [], more: false };
+  if (!source) return { id, title, url: String(db.url ?? ""), columns: [], types: {}, rows: [], more: false };
   const schema = await call(token, `/data_sources/${source.id}`);
   const props = Object.entries((schema.properties ?? {}) as Record<string, Json>);
   // Title column first, then the rest in Notion's order
   const columns = [...props.filter(([, p]) => p.type === "title"), ...props.filter(([, p]) => p.type !== "title")].map(([n]) => n).slice(0, 12);
   const q = await call(token, `/data_sources/${source.id}/query`, { method: "POST", body: JSON.stringify({ page_size: MAX_ROWS }) });
-  const rows = (q.results as Json[]).map((r) => ({
-    id: String(r.id),
-    url: String(r.url ?? ""),
-    cells: Object.fromEntries(columns.map((c) => [c, r.properties?.[c] ? propText(r.properties[c]) : ""])),
-  }));
-  return { id, title, url: String(db.url ?? ""), columns, rows, more: Boolean(q.has_more) };
+  const types = Object.fromEntries(props.filter(([n]) => columns.includes(n)).map(([n, p]) => [n, String(p.type)]));
+  const rows = (q.results as Json[]).map((r) => {
+    // A card picture: the page cover, else the first image in a files column
+    const files = Object.values((r.properties ?? {}) as Record<string, Json>).filter((p) => p.type === "files").flatMap((p) => (p.files ?? []) as Json[]);
+    const image = files.map(fileUrl).find((u) => /\.(png|jpe?g|gif|webp|avif|svg)(\?|$)/i.test(u));
+    const cover = fileUrl(r.cover) || image;
+    return {
+      id: String(r.id),
+      url: String(r.url ?? ""),
+      cells: Object.fromEntries(columns.map((c) => [c, r.properties?.[c] ? propText(r.properties[c]) : ""])),
+      ...(iconOf(r) ? { icon: iconOf(r) } : {}),
+      ...(cover ? { cover } : {}),
+    };
+  });
+  return { id, title, url: String(db.url ?? ""), columns, types, rows, more: Boolean(q.has_more) };
 }
 
 /** Read a Notion page or database by link or id. */
@@ -274,6 +285,42 @@ export async function readNotion(token: string, link: string): Promise<NotionDoc
     const db = await database(token, id);
     return { kind: "database", id, title: db.title, url: db.url, db };
   }
+}
+
+export interface NotionHit {
+  id: string;
+  title: string;
+  icon?: string;
+  kind: "page" | "database";
+  url: string;
+  edited: string; // ISO
+}
+
+/**
+ * Pages and databases the person shared with their integration, newest edits first. Rows inside a
+ * database are left out (they are reached by opening the database), so the list stays readable.
+ */
+export async function searchNotion(token: string, query: string): Promise<NotionHit[]> {
+  const r = await call(token, "/search", {
+    method: "POST",
+    body: JSON.stringify({ query: query.slice(0, 200), page_size: 60, sort: { direction: "descending", timestamp: "last_edited_time" } }),
+  });
+  const hits: NotionHit[] = [];
+  for (const o of (r.results ?? []) as Json[]) {
+    if (o.archived || o.in_trash) continue;
+    if (o.object === "page") {
+      const parent = String(o.parent?.type ?? "");
+      if (parent === "database_id" || parent === "data_source_id") continue;
+      const titleProp = Object.values((o.properties ?? {}) as Record<string, Json>).find((p) => p.type === "title");
+      hits.push({ id: String(o.id), title: (titleProp && plain(titleProp.title)) || "Untitled", icon: iconOf(o), kind: "page", url: String(o.url ?? ""), edited: String(o.last_edited_time ?? "") });
+    } else if (o.object === "data_source" || o.object === "database") {
+      // Opened through its database, which the reader understands
+      const dbId = String(o.object === "database" ? o.id : o.parent?.database_id ?? o.database_parent?.database_id ?? o.id);
+      if (hits.some((h) => h.id === dbId)) continue;
+      hits.push({ id: dbId, title: plain(o.title) || "Untitled database", icon: iconOf(o), kind: "database", url: String(o.url ?? ""), edited: String(o.last_edited_time ?? "") });
+    }
+  }
+  return hits;
 }
 
 // ---------------------------------------------------------------- markdown, for assistants

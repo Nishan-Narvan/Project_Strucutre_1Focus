@@ -5,7 +5,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { notionId, notionMarkdown, readNotion } from "../src/lib/server/notion";
+import { notionId, notionMarkdown, readNotion, searchNotion } from "../src/lib/server/notion";
 
 const PAGE = "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d";
 const DASHED = "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d";
@@ -36,10 +36,19 @@ const routes: Record<string, unknown> = {
   "POST /v1/data_sources/ds1/query": {
     has_more: false,
     results: [
-      { id: "row1", url: "https://www.notion.so/row1", properties: { Word: { type: "title", title: rt("水") }, Meaning: { type: "rich_text", rich_text: rt("water") }, Learned: { type: "checkbox", checkbox: true } } },
+      { id: "row1", url: "https://www.notion.so/row1", icon: { type: "emoji", emoji: "💧" }, cover: { type: "external", external: { url: "https://img.example/water.jpg" } }, properties: { Word: { type: "title", title: rt("水") }, Meaning: { type: "rich_text", rich_text: rt("water") }, Learned: { type: "checkbox", checkbox: true } } },
       { id: "row2", url: "https://www.notion.so/row2", properties: { Word: { type: "title", title: rt("火") }, Meaning: { type: "rich_text", rich_text: rt("fire") }, Learned: { type: "checkbox", checkbox: false } } },
     ],
   },
+};
+
+routes["POST /v1/search"] = {
+  results: [
+    { object: "page", id: "p1", url: "https://www.notion.so/p1", last_edited_time: "2026-11-15T10:00:00.000Z", parent: { type: "workspace" }, icon: { type: "emoji", emoji: "📓" }, properties: { title: { type: "title", title: rt("Study log") } } },
+    { object: "page", id: "row9", url: "https://www.notion.so/row9", parent: { type: "data_source_id", data_source_id: "ds1" }, properties: { Word: { type: "title", title: rt("木") } } },
+    { object: "data_source", id: "ds1", url: "https://www.notion.so/db", title: rt("Vocabulary"), parent: { type: "database_id", database_id: "db" }, last_edited_time: "2026-11-14T10:00:00.000Z" },
+    { object: "page", id: "gone", in_trash: true, properties: { title: { type: "title", title: rt("Old") } } },
+  ],
 };
 
 const seen: string[] = [];
@@ -87,4 +96,22 @@ test("a Notion page with text, lists, to-dos, toggle, image, table, sub-page and
 
 test("a page not shared with the integration gives a clear instruction", async () => {
   await assert.rejects(readNotion("ntn_test", "https://www.notion.so/Other-ffffffffffffffffffffffffffffffff"), /Connections, and add your integration/);
+});
+
+test("Notion search lists pages and databases, not database rows or trash", async () => {
+  const hits = await searchNotion("secret_x", "");
+  assert.deepEqual(hits.map((h) => `${h.kind}:${h.id}:${h.title}`), ["page:p1:Study log", "database:db:Vocabulary"]);
+  assert.equal(hits[0].icon, "📓");
+});
+
+test("Notion databases carry column types and card pictures for gallery and board views", async () => {
+  const doc = await readNotion("secret_x", DASHED);
+  assert.equal(doc.kind, "page");
+  const db = doc.kind === "page" ? (doc.blocks.find((b) => b.type === "database") as { db: { types: Record<string, string>; rows: { icon?: string; cover?: string }[] } } | undefined)?.db : undefined;
+  assert.ok(db);
+  assert.equal(db.types.Learned, "checkbox");
+  assert.equal(db.types.Word, "title");
+  assert.equal(db.rows[0].cover, "https://img.example/water.jpg");
+  assert.equal(db.rows[0].icon, "💧");
+  assert.equal(db.rows[1].cover, undefined);
 });

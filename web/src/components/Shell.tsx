@@ -24,6 +24,7 @@ const NAV = [
   { href: "/goals", label: "Goals" },
   { href: "/today", label: "Today" },
   { href: "/calendar", label: "Calendar" },
+  { href: "/notes", label: "Notes" },
   { href: "/routines", label: "Routines" },
   { href: "/settings", label: "Settings" },
 ];

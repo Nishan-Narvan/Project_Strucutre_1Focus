@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withUser } from "@/lib/server/http";
 import { loadSecrets, updateSecrets } from "@/lib/server/secrets";
-import { NotionError, notionMarkdown, readNotionCached } from "@/lib/server/notion";
+import { NotionError, notionMarkdown, readNotionCached, searchNotion } from "@/lib/server/notion";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -10,6 +10,7 @@ export const maxDuration = 30;
  * Notion for the signed-in user, through their own integration secret (saved encrypted).
  *   GET  ?url=<notion link>[&format=md][&fresh=1]  -> the page or database, ready to show (or Markdown)
  *   GET  ?status=1                                  -> { connected }
+ *   GET  ?search=<words>                            -> { hits } pages and databases shared with the integration
  *   PUT  { token }                                   -> check the secret against Notion and save it
  *   DELETE                                           -> forget the secret
  */
@@ -22,6 +23,7 @@ export async function GET(req: Request) {
     if (!token) return NextResponse.json({ error: "Connect Notion in Settings first (one integration secret).", needsSetup: true }, { status: 400 });
     const url = q.get("url") ?? "";
     try {
+      if (q.has("search")) return NextResponse.json({ hits: await searchNotion(token, q.get("search") ?? "") });
       const doc = await readNotionCached(user.id, token, url, q.has("fresh"));
       return q.get("format") === "md" ? NextResponse.json({ title: doc.title, markdown: notionMarkdown(doc) }) : NextResponse.json({ doc });
     } catch (e) {

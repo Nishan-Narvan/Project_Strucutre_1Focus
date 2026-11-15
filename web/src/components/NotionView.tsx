@@ -23,10 +23,9 @@ function Rich({ s }: { s: Span[] }) {
   );
 }
 
-function Table({ db }: { db: NDatabase }) {
+function TableView({ db, open }: { db: NDatabase; open?: (id: string) => void }) {
   return (
-    <div className="my-3">
-      <p className="mb-1.5 text-sm font-medium">{db.title}</p>
+    <div>
       <div className="overflow-x-auto rounded-lg border border-line">
         <table className="w-full min-w-[480px] text-sm">
           <thead className="bg-panel-2 text-left text-xs text-muted">
@@ -37,7 +36,13 @@ function Table({ db }: { db: NDatabase }) {
               <tr key={r.id}>
                 {db.columns.map((c, i) => (
                   <td key={c} className="px-3 py-2 align-top">
-                    {i === 0 && r.url ? <a href={r.url} target="_blank" rel="noreferrer" className="hover:underline">{r.cells[c] || "Untitled"}</a> : r.cells[c]}
+                    {i === 0 && open ? (
+                      <button type="button" className="text-left underline decoration-faint underline-offset-2 hover:decoration-ink" onClick={() => open(r.id)}>{r.cells[c] || "Untitled"}</button>
+                    ) : i === 0 && r.url ? (
+                      <a href={r.url} target="_blank" rel="noreferrer" className="hover:underline">{r.cells[c] || "Untitled"}</a>
+                    ) : (
+                      r.cells[c]
+                    )}
                   </td>
                 ))}
               </tr>
@@ -45,7 +50,164 @@ function Table({ db }: { db: NDatabase }) {
           </tbody>
         </table>
       </div>
-      {db.more && <p className="mt-1 text-xs text-muted">Showing the first {db.rows.length} rows; the rest are in Notion.</p>}
+    </div>
+  );
+}
+
+type DbView = "table" | "gallery" | "board" | "list";
+type Row = NDatabase["rows"][number];
+
+const titleOf = (db: NDatabase, r: Row) => r.cells[db.columns[0]] || "Untitled";
+/** Columns worth showing on a card: filled, short, not the title. */
+const details = (db: NDatabase, r: Row, skip?: string) => db.columns.slice(1).filter((c) => c !== skip && r.cells[c] && r.cells[c].length <= 80).slice(0, 4);
+
+function RowTitle({ db, r, open, className = "" }: { db: NDatabase; r: Row; open?: (id: string) => void; className?: string }) {
+  const label = <>{r.icon ? `${r.icon} ` : ""}{titleOf(db, r)}</>;
+  return open ? (
+    <button type="button" className={`text-left hover:underline ${className}`} onClick={() => open(r.id)}>{label}</button>
+  ) : (
+    <a href={r.url} target="_blank" rel="noreferrer" className={`hover:underline ${className}`}>{label}</a>
+  );
+}
+
+function Fields({ db, r, skip }: { db: NDatabase; r: Row; skip?: string }) {
+  const cols = details(db, r, skip);
+  if (!cols.length) return null;
+  return (
+    <dl className="mt-2 space-y-0.5 text-xs">
+      {cols.map((c) => (
+        <div key={c} className="flex gap-2">
+          <dt className="shrink-0 text-faint">{c}</dt>
+          <dd className="min-w-0 truncate text-muted">{r.cells[c]}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function GalleryView({ db, open }: { db: NDatabase; open?: (id: string) => void }) {
+  return (
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
+      {db.rows.map((r) => (
+        <div key={r.id} className="overflow-hidden rounded-xl border border-line bg-panel-2">
+          {r.cover ? (
+            <img src={r.cover} alt="" loading="lazy" className="h-32 w-full object-cover" />
+          ) : (
+            <div className="grid h-32 place-items-center text-4xl text-faint" aria-hidden>{r.icon ?? "📄"}</div>
+          )}
+          <div className="p-3">
+            <RowTitle db={db} r={r} open={open} className="block text-sm font-medium" />
+            <Fields db={db} r={r} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BoardView({ db, open, by }: { db: NDatabase; open?: (id: string) => void; by: string }) {
+  const groups = new Map<string, Row[]>();
+  for (const r of db.rows) {
+    const keys = db.types[by] === "multi_select" ? (r.cells[by] ? r.cells[by].split(", ") : [""]) : [r.cells[by] ?? ""];
+    for (const k of keys) groups.set(k, [...(groups.get(k) ?? []), r]);
+  }
+  return (
+    <div className="flex gap-3 overflow-x-auto pb-2">
+      {[...groups.entries()].map(([k, rows]) => (
+        <section key={k || "none"} className="w-64 shrink-0">
+          <h4 className="mb-2 flex items-center gap-2 text-xs text-muted">
+            <span className="chip">{k || `No ${by}`}</span>
+            <span className="tabular-nums">{rows.length}</span>
+          </h4>
+          <div className="space-y-2">
+            {rows.map((r) => (
+              <div key={r.id} className="rounded-xl border border-line bg-panel-2 p-3">
+                {r.cover && <img src={r.cover} alt="" loading="lazy" className="mb-2 h-24 w-full rounded-lg object-cover" />}
+                <RowTitle db={db} r={r} open={open} className="block text-sm font-medium" />
+                <Fields db={db} r={r} skip={by} />
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function ListView({ db, open }: { db: NDatabase; open?: (id: string) => void }) {
+  return (
+    <ul className="divide-y divide-line rounded-xl border border-line">
+      {db.rows.map((r) => {
+        const side = details(db, r).slice(0, 2);
+        return (
+          <li key={r.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
+            <RowTitle db={db} r={r} open={open} className="min-w-0 flex-1 truncate" />
+            {side.map((c) => <span key={c} className="hidden shrink-0 text-xs text-muted sm:inline">{r.cells[c]}</span>)}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+const VIEW_LABEL: Record<DbView, string> = { table: "Table", gallery: "Gallery", board: "Board", list: "List" };
+
+/** A Notion database shown the way Notion shows it: table, gallery cards, a board by status, or a list. */
+function Database({ db, open }: { db: NDatabase; open?: (id: string) => void }) {
+  const groupable = db.columns.filter((c) => ["status", "select", "multi_select", "checkbox"].includes(db.types?.[c] ?? ""));
+  const pictures = db.rows.some((r) => r.cover);
+  const views: DbView[] = ["table", "gallery", ...(groupable.length ? (["board"] as const) : []), "list"];
+  const fallback: DbView = pictures ? "gallery" : groupable.some((c) => db.types[c] === "status") ? "board" : "table";
+  const storeKey = `wml.notion.view.${db.id}`;
+  const [view, setView] = useState<DbView>(fallback);
+  const [by, setBy] = useState(groupable.find((c) => db.types[c] === "status") ?? groupable[0] ?? "");
+
+  // The view picked for this database last time, kept on this device
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(storeKey) ?? "null") as { view?: DbView; by?: string } | null;
+      if (saved?.view && views.includes(saved.view)) setView(saved.view);
+      if (saved?.by && groupable.includes(saved.by)) setBy(saved.by);
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeKey]);
+  const choose = (v: DbView, b = by) => {
+    setView(v);
+    setBy(b);
+    try {
+      localStorage.setItem(storeKey, JSON.stringify({ view: v, by: b }));
+    } catch {}
+  };
+
+  return (
+    <div className="my-3">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <p className="mr-auto text-sm font-medium">{db.title}</p>
+        <div className="inline-flex rounded-[10px] border border-line bg-panel-2 p-0.5" role="radiogroup" aria-label="Database view">
+          {views.map((v) => (
+            <button key={v} type="button" role="radio" aria-checked={view === v} onClick={() => choose(v)} className={`h-7 rounded-lg px-2.5 text-xs transition-colors ${view === v ? "bg-ink text-on-ink" : "text-muted hover:text-ink"}`}>
+              {VIEW_LABEL[v]}
+            </button>
+          ))}
+        </div>
+        {view === "board" && groupable.length > 1 && (
+          <select className="input h-8 w-auto py-0 text-xs" value={by} onChange={(e) => choose("board", e.target.value)} aria-label="Group by">
+            {groupable.map((c) => <option key={c} value={c}>Group by {c}</option>)}
+          </select>
+        )}
+      </div>
+      {!db.rows.length ? (
+        <p className="text-sm text-muted">This database is empty, or the integration cannot see its rows.</p>
+      ) : view === "gallery" ? (
+        <GalleryView db={db} open={open} />
+      ) : view === "board" && by ? (
+        <BoardView db={db} open={open} by={by} />
+      ) : view === "list" ? (
+        <ListView db={db} open={open} />
+      ) : (
+        <TableView db={db} open={open} />
+      )}
+      {db.more && <p className="mt-1.5 text-xs text-muted">Showing the first {db.rows.length} rows; the rest are in Notion.</p>}
     </div>
   );
 }
@@ -130,14 +292,14 @@ function One({ b, open }: { b: NBlock; open: (id: string) => void }) {
     case "child_page":
       return <button type="button" className="my-1 block text-left underline decoration-faint underline-offset-2 hover:decoration-ink" onClick={() => open(b.id)}>📄 {b.title}</button>;
     case "database":
-      return <Table db={b.db} />;
+      return <Database db={b.db} open={open} />;
     default:
       return null;
   }
 }
 
 /** One Notion page or database, read live through the person's Notion connection. */
-export function NotionView({ url, title }: { url: string; title: string }) {
+export function NotionView({ url, title, reader }: { url: string; title: string; reader?: boolean }) {
   const [trail, setTrail] = useState<string[]>([url]);
   const [doc, setDoc] = useState<NotionDoc | null>(null);
   const [error, setError] = useState<{ text: string; setup?: boolean } | null>(null);
@@ -162,14 +324,10 @@ export function NotionView({ url, title }: { url: string; title: string }) {
   useEffect(() => {
     void load(current);
   }, [current, load]);
+  const open = (id: string) => setTrail((t) => [...t, id]);
 
-  return (
-    <details open className="card p-0">
-      <summary className="flex cursor-pointer items-center gap-3 p-4">
-        <span className="min-w-0 flex-1 truncate text-base font-medium">{doc?.icon ? `${doc.icon} ` : ""}{doc?.title ?? title}</span>
-        <span className="shrink-0 text-xs text-muted">Notion</span>
-      </summary>
-      <div className="border-t border-line px-4 pb-4">
+  const body = (
+    <>
         <div className="flex flex-wrap items-center gap-3 pt-3 text-xs text-muted">
           {trail.length > 1 && <button type="button" className="hover:text-ink" onClick={() => setTrail((t) => t.slice(0, -1))}>← Back</button>}
           <button type="button" className="hover:text-ink" onClick={() => load(current, true)} disabled={loading}>{loading ? "Loading…" : "Refresh from Notion"}</button>
@@ -182,9 +340,10 @@ export function NotionView({ url, title }: { url: string; title: string }) {
         ) : !doc ? (
           <p className="mt-3 text-sm text-muted">Reading from Notion…</p>
         ) : doc.kind === "database" ? (
-          <Table db={doc.db} />
+          <Database db={doc.db} open={open} />
         ) : (
-          <div className="mt-2 text-[15px]">
+          <div className={reader ? "mt-4 text-base leading-relaxed" : "mt-2 text-[15px]"}>
+            {reader && <h1 className="mb-4 font-serif text-4xl leading-tight tracking-tight">{doc.icon ? `${doc.icon} ` : ""}{doc.title}</h1>}
             {doc.cover && <img src={doc.cover} alt="" className="mb-3 h-32 w-full rounded-lg object-cover" />}
             {doc.properties.length > 0 && (
               <dl className="mb-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
@@ -196,11 +355,22 @@ export function NotionView({ url, title }: { url: string; title: string }) {
                 ))}
               </dl>
             )}
-            <Blocks blocks={doc.blocks} open={(id) => setTrail((t) => [...t, id])} />
+            <Blocks blocks={doc.blocks} open={open} />
             {doc.truncated && <p className="mt-3 text-xs text-muted">This page is long; the rest is in Notion.</p>}
           </div>
         )}
-      </div>
+    </>
+  );
+
+  // Full page on Notes; a folding card inside goals and phases
+  if (reader) return <article className="min-w-0">{body}</article>;
+  return (
+    <details open className="card p-0">
+      <summary className="flex cursor-pointer items-center gap-3 p-4">
+        <span className="min-w-0 flex-1 truncate text-base font-medium">{doc?.icon ? `${doc.icon} ` : ""}{doc?.title ?? title}</span>
+        <span className="shrink-0 text-xs text-muted">Notion</span>
+      </summary>
+      <div className="border-t border-line px-4 pb-4">{body}</div>
     </details>
   );
 }
