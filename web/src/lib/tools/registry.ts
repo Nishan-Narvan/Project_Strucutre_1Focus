@@ -46,6 +46,8 @@ export interface ToolOutput {
   label: string;
   /** This particular call is destructive even if the tool usually is not. */
   destructive?: boolean;
+  /** A Notion link whose content the host should read and add to the result (needs network). */
+  fetchNotion?: string;
 }
 
 type Schema = Record<string, unknown>;
@@ -1188,6 +1190,25 @@ tool({
     return {
       result: list.length ? list.map((m) => ({ id: m.id, title: m.title, url: m.url, kind: MATERIAL_LABEL[m.kind], for: placeOf(g, m), added: m.addedAt.slice(0, 10), ...(m.note ? { note: m.note } : {}) })) : { note: "No materials linked here yet. add_material links one." },
       label: `Listed ${list.length} material${list.length === 1 ? "" : "s"} for ${g.title}`,
+    };
+  },
+});
+
+tool({
+  name: "read_material",
+  kind: "read",
+  description:
+    "Read a linked material. Notion pages and databases are read in full through the person's Notion connection: text, headings, lists, to-dos, tables and database rows, with images as links. For other links (Drive, docs, PDFs, videos) this returns the link to open with your own tools; for files on the person's computer it returns the path.",
+  params: { goal_id: GOAL_ID, material_id: S("Material id or title (from list_materials).") },
+  required: ["goal_id", "material_id"],
+  run: (a, ctx) => {
+    const g = findGoal(ctx.state, a.req("goal_id"));
+    const m = findMaterial(g, a.req("material_id"));
+    const info = { title: m.title, kind: MATERIAL_LABEL[m.kind], url: m.url, for: placeOf(g, m), ...(m.note ? { note: m.note } : {}) };
+    if (m.kind === "notion") return { result: info, fetchNotion: m.url, label: `Read "${m.title}" from Notion` };
+    return {
+      result: { ...info, how_to_read: m.kind === "local" || m.kind === "pdf" && !/^https?:/i.test(m.url) ? "A file on the person's computer: use a file-system tool if you have one, otherwise ask them to open it." : "Open the link with your own tools (Google Drive connector, web fetch)." },
+      label: `Looked up "${m.title}"`,
     };
   },
 });

@@ -32,6 +32,7 @@ and shared by the in-app assistant and the MCP connector:
 ## Materials, history and the memory file
 
 - **Materials:** link what already exists for a goal, phase or task: Notion pages, Google Drive files and folders, docs, PDFs, videos, repos, or a path to a file on your computer. The assistant and Claude list them (`list_materials`) and open the ones they can reach with their own Notion or Drive connectors.
+- **Notion, shown in the app:** connect Notion once in Settings (an internal integration secret, saved encrypted), share your pages or databases with that integration, and link them to a goal or phase. Their text, images, lists, to-dos, toggles, tables and databases appear right there, read live from Notion. The assistant and Claude read them with `read_material`.
 - **History:** every change to a goal's plan is recorded with a date: created, roadmap written, phases and tasks added, materials linked, schedule changes. `get_goal_history` adds quality figures: on-time rate, delays, missed and skipped sessions, notes, minutes per week.
 - **Memory file:** on a goal page or in Settings, **Download** or **Copy** one Markdown file with everything: your constraints, the roadmap with done and remaining tasks, the daily log since creation, the change history, materials, KPIs and the raw data as JSON. Paste it into any model to carry on. Claude can fetch it with `get_memory_file`.
 
@@ -47,7 +48,7 @@ The URL holds a secret; treat it like a password. "Make a new URL" in Settings r
 ## Tools
 
 <!-- tools:start -->
-62 tools. Inputs marked * are required. Change tools also accept `confirm_token` (second call, after the person agrees) and `request_id` (safe retries).
+63 tools. Inputs marked * are required. Change tools also accept `confirm_token` (second call, after the person agrees) and `request_id` (safe retries).
 
 | Tool | Kind | What it does | Inputs | Example |
 |---|---|---|---|---|
@@ -104,6 +105,7 @@ The URL holds a secret; treat it like a password. "Make a new URL" in Settings r
 | `update_memory` | memory | Correct or refine a saved memory, keeping its id. | `memory_id`*, `text`*, `kind` | `{"memory_id":"m3x9","text":"Studies best before work.","kind":"practice"}` |
 | `delete_memory` | **destructive** | Delete a saved memory that turned out wrong or out of date. | `memory_id`* | `{"memory_id":"m3x9"}` |
 | `list_materials` | read | Materials linked to a goal: Notion pages, Google Drive folders and files, docs, sheets, PDFs, videos, code repos, and paths to files on the person's computer, each with what it is for (the goal, a phase or a task). | `goal_id`*, `phase`, `task_id` | `{"goal_id":"Crack DSA for coding interviews","phase":2}` |
+| `read_material` | read | Read a linked material. | `goal_id`*, `material_id`* | `{"goal_id":"Crack DSA for coding interviews"}` |
 | `add_material` | change | Link a material to a goal, or to one of its phases or tasks: a Notion page, a Google Drive file or folder, a doc, a PDF, a video, a repo, any web page, or a path to a file on the person's computer. | `goal_id`*, `url`*, `title`, `phase`, `task_id`, `kind`, `note` | `{"goal_id":"Crack DSA for coding interviews","title":"Learn Rust"}` |
 | `update_material` | change | Change a material's title, link, note or where it is attached (goal, phase or task). | `goal_id`*, `material_id`*, `title`, `url`, `note`, `phase`, `task_id`, `whole_goal` | `{"goal_id":"Crack DSA for coding interviews","title":"Learn Rust"}` |
 | `remove_material` | **destructive** | Unlink a material from a goal. | `goal_id`*, `material_id`* | `{"goal_id":"Crack DSA for coding interviews"}` |

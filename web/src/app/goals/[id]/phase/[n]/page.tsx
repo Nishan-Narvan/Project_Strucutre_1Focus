@@ -9,6 +9,7 @@ import { progress, taskSessions } from "@/lib/schedule";
 import { limitsOf } from "@/lib/rules";
 import { PhaseEditor, TaskControls } from "@/components/Editors";
 import { MaterialsPanel, TaskMaterials } from "@/components/Materials";
+import { NotionNotes } from "@/components/NotionView";
 import { CompleteButton, fmtDoneAt, KindTag, SourceBadge } from "@/components/ui";
 import type { Goal, TaskKind } from "@/lib/types";
 
@@ -164,6 +165,9 @@ export default function PhasePage() {
             })}
           </ol>
           <AddTask goal={g} index={index} />
+        </div>
+        <div className="lg:col-span-2 lg:row-start-2">
+          <NotionNotes key={m.id} goal={g} phaseId={m.id} />
         </div>
 
         <div className="space-y-6">

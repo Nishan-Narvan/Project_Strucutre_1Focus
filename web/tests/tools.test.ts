@@ -66,10 +66,11 @@ test("every tool has a name, description, kind and a valid schema", () => {
 });
 
 test("reading tools never change anything", () => {
-  const s = fresh();
+  const base = fresh();
+  const s = applyOp(base, { type: "add_material", goalId: base.goals[0].id, material: { id: "m1", title: "Notes", url: "https://www.notion.so/Notes-1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d", kind: "notion", addedAt: T } }, { t: T });
   const g = s.goals[0];
   for (const t of TOOLS.filter((x) => x.kind === "read")) {
-    const out = runSpec(t, { goal_id: g.id, query: "recursion", days: 3 }, ctx(s));
+    const out = runSpec(t, { goal_id: g.id, query: "recursion", days: 3, material_id: "m1" }, ctx(s));
     assert.ok(!out.ops?.length, `${t.name} returned no changes`);
     assert.ok(!out.error, `${t.name}: ${out.error}`);
   }

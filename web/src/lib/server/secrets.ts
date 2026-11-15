@@ -15,6 +15,8 @@ export interface Secrets {
   mcp?: Record<string, string>;
   /** The claude.ai connector token, kept so the URL can be shown again */
   connector?: string;
+  /** Notion integration secret, for showing Notion pages and letting assistants read them */
+  notion?: string;
 }
 
 function key() {

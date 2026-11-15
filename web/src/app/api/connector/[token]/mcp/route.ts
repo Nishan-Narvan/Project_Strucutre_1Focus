@@ -6,6 +6,8 @@ import { asOne, dryRun, inputSchema, needsApproval, runSpec, TOOLS, BY_NAME, typ
 import { OpError } from "@/lib/ops";
 import { lastAudit, loadState, NotConfigured, userForConnector, validToken } from "@/lib/server/supabase";
 import { applyForUser, todayIn, undoLast } from "@/lib/server/state";
+import { loadSecrets } from "@/lib/server/secrets";
+import { NotionError, notionMarkdown, readNotionCached } from "@/lib/server/notion";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -120,6 +122,16 @@ function buildServer(userId: string) {
       const out = runSpec(spec, args, { state: row.state, t, now: new Date().toISOString() });
       const body = typeof out.result === "string" ? out.result : JSON.stringify(out.result, null, 1);
       if (out.error) return text(out.error, true);
+      if (out.fetchNotion) {
+        const token = (await loadSecrets(userId)).notion;
+        if (!token) return text(`${body}\n\nThe person has not connected Notion in Where MyLife (Settings → Notion), so its content can't be read here. Use your own Notion connector if you have one.`);
+        try {
+          const md = notionMarkdown(await readNotionCached(userId, token, out.fetchNotion));
+          return text(`${body}\n\n--- Content from Notion ---\n${md.slice(0, 40000)}${md.length > 40000 ? "\n(cut: the page is longer)" : ""}`);
+        } catch (e) {
+          return text(`${body}\n\nCould not read it from Notion: ${e instanceof NotionError ? e.message : "unknown error"}`, true);
+        }
+      }
       if (!out.ops?.length) return text(body);
       const refusal = dryRun(row.state, out.ops, t);
       if (refusal) return text(`Refused: ${refusal}`, true);
