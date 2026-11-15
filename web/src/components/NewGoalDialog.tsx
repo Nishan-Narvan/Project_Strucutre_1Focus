@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
@@ -53,7 +54,15 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
   const atLimit = active >= L.maxActiveGoals;
   const hoursAfter = Math.round((committedHours(state.goals) + hoursPerDay) * 100) / 100;
   const overHours = hoursAfter > L.maxDailyHours;
-  const valid = f.title.trim().length > 1 && f.days.length > 0 && f.deadline > f.startDate && !atLimit && !overHours;
+  // What still stops the goal from being created, in words, shown next to the button
+  const problems = [
+    ...(f.title.trim().length < 2 ? ["Write what you want to learn (at the top)."] : []),
+    ...(f.days.length === 0 ? ["Pick at least one study day."] : []),
+    ...(f.deadline <= f.startDate ? ["The deadline must be after the start date."] : []),
+    ...(overHours ? [`That is ${hoursAfter} h a day across active goals, over your ${L.maxDailyHours} h limit: lower the minutes or pause a goal.`] : []),
+  ];
+  const valid = problems.length === 0 && !atLimit;
+  const [tried, setTried] = useState(false);
 
   function create() {
     const title = f.title.trim();
@@ -92,7 +101,7 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-scrim p-3 md:p-6" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby="new-goal-title" className="glass flex max-h-full w-full max-w-2xl flex-col rounded-[16px] border border-line bg-bg shadow-2xl shadow-black" onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="new-goal-title" className="glass flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[16px] md:max-h-[calc(100dvh-3rem)] border border-line bg-bg shadow-2xl shadow-black" onClick={(e) => e.stopPropagation()}>
         <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 md:px-7 md:py-5">
           <div>
             <h2 id="new-goal-title" className="font-serif text-3xl leading-none tracking-tight">{atLimit ? `You already have ${L.maxActiveGoals} active goals` : "Start a new goal"}</h2>
@@ -107,8 +116,15 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
           <button type="button" className="btn shrink-0" onClick={onClose}>Close</button>
         </header>
 
+        {atLimit && (
+          <div className="flex flex-wrap gap-2 p-5 md:p-7">
+            <button type="button" className="btn btn-primary" onClick={onClose}>Pause or archive a goal</button>
+            <Link href="/settings" className="btn" onClick={onClose}>Raise the limit in Settings</Link>
+          </div>
+        )}
         {!atLimit && (
-          <form className="grid min-h-0 gap-4 overflow-y-auto p-5 md:grid-cols-2 md:p-7" onSubmit={(e) => { e.preventDefault(); if (valid) create(); }}>
+          <form className="flex min-h-0 flex-1 flex-col" onSubmit={(e) => { e.preventDefault(); setTried(true); if (valid) create(); }}>
+          <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-5 md:grid-cols-2 md:p-7">
             <div className="md:col-span-2">
               <label className="label" htmlFor="ng-title">What do you want to learn?</label>
               <input id="ng-title" ref={first} className="input" value={f.title} onChange={(e) => set("title", e.target.value)} placeholder="Get interview-ready in data structures and algorithms" />
@@ -172,13 +188,22 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
               {f.deadline <= f.startDate && <p className="mt-2 text-sm text-bad">The deadline must be after the start date.</p>}
             </div>
 
-            <div className="flex flex-wrap gap-2 md:col-span-2">
-              <button className="btn btn-primary" disabled={!valid}>{ready ? "Create goal and write its roadmap" : "Create goal"}</button>
-              {ready && <button type="button" className="btn" onClick={talk}>Talk it through with the assistant instead</button>}
-            </div>
             <p className="text-xs text-faint md:col-span-2">
               {active} of {L.maxActiveGoals} active goals in use.{L.editWindowDays ? ` Phases and tasks can be removed for ${L.editWindowDays} days, then only added to.` : ""}
             </p>
+          </div>
+          {/* Always visible, whatever the screen height: the form above scrolls, this does not */}
+          <div className="shrink-0 border-t border-line px-5 py-4 md:px-7">
+            {tried && problems.length > 0 && (
+              <ul className="mb-3 space-y-0.5 text-sm text-bad" role="alert">
+                {problems.map((p) => <li key={p}>{p}</li>)}
+              </ul>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <button className="btn btn-primary">+ {ready ? "Create goal and write its roadmap" : "Create goal"}</button>
+              {ready && <button type="button" className="btn" onClick={talk}>Talk it through with the assistant instead</button>}
+            </div>
+          </div>
           </form>
         )}
       </div>
