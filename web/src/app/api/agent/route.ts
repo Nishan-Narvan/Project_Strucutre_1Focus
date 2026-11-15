@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { PROVIDERS } from "@/lib/providers";
+import { connectBest, errorText, listModels } from "@/lib/server/models";
 import { fail, publicHttpsUrl } from "@/lib/server/net";
 import { currentUser } from "@/lib/server/auth";
 import { loadSecrets, type Secrets } from "@/lib/server/secrets";
@@ -13,6 +14,7 @@ export const maxDuration = 60;
  * for the account; a request may carry an explicit key only to test a new one before it is saved.
  * Keys are never logged.
  *   { action: "models", provider, apiKey?, baseUrl? }                    -> { models: string[] }
+ *   { action: "connect", provider, apiKey?, baseUrl?, current? }          -> { model, ms, fallbacks, models }
  *   { action: "chat", provider, apiKey?, baseUrl?, model, messages, tools? } -> { message }
  */
 
@@ -21,23 +23,13 @@ function baseFor(provider: ProviderId, baseUrl: unknown): string | null {
   return publicHttpsUrl(baseUrl)?.toString().replace(/\/+$/, "") ?? null;
 }
 
-/** Pull a readable message out of whatever error shape the provider returned. */
-function errorText(raw: string, status: number): string {
-  try {
-    const j = JSON.parse(raw);
-    const e = Array.isArray(j) ? j[0]?.error : j.error;
-    const m = typeof e === "string" ? e : e?.message ?? j.message;
-    if (m) return String(m).slice(0, 400);
-  } catch {}
-  return raw.slice(0, 200) || `The provider answered with status ${status}.`;
-}
 
 export async function POST(req: Request) {
   const user = await currentUser().catch(() => null);
   if (!user) return fail("You are signed out. Sign in again.", 401);
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== "object") return fail("Bad request.", 400);
-  const { action, provider, apiKey, model, messages, tools } = body as Record<string, unknown>;
+  const { action, provider, apiKey, model, messages, tools, current } = body as Record<string, unknown>;
   let { baseUrl } = body as Record<string, unknown>;
 
   if (typeof provider !== "string" || !Object.hasOwn(PROVIDERS, provider)) return fail("Unknown provider.", 400);
@@ -56,25 +48,13 @@ export async function POST(req: Request) {
 
   try {
     if (action === "models") {
-      // OpenRouter's model list is public, so the key has to be checked on its own endpoint
-      if (provider === "openrouter") {
-        const k = await fetch(`${base}/key`, { headers, redirect: "error", signal: AbortSignal.timeout(20000) });
-        if (k.status === 401 || k.status === 403) return fail(errorText(await k.text(), k.status), 401);
-      }
-      // Anthropic lists models on its native API, which takes the key in its own header
-      const h = provider === "anthropic" ? { "x-api-key": key, "anthropic-version": "2023-06-01" } : headers;
-      // Redirects are refused throughout, so a public address cannot bounce the request somewhere private
-      const r = await fetch(`${base}/models`, { headers: h, redirect: "error", signal: AbortSignal.timeout(20000) });
-      const raw = await r.text();
-      if (!r.ok) return fail(errorText(raw, r.status), r.status);
-      const data = JSON.parse(raw);
-      const list: unknown[] = Array.isArray(data) ? data : data.data ?? data.models ?? [];
-      const models = list
-        .map((m) => (typeof m === "string" ? m : String((m as { id?: string; name?: string }).id ?? (m as { name?: string }).name ?? "")))
-        .map((id) => id.replace(/^models\//, ""))
-        .filter(Boolean)
-        .sort();
-      return NextResponse.json({ models });
+      const listed = await listModels(provider as ProviderId, base, key);
+      return "error" in listed ? fail(listed.error, listed.status) : NextResponse.json({ models: listed.models });
+    }
+
+    if (action === "connect") {
+      const r = await connectBest(provider as ProviderId, base, key, typeof current === "string" ? current : "");
+      return "error" in r ? fail(r.error, r.status) : NextResponse.json(r);
     }
 
     if (action === "chat") {
@@ -107,3 +87,4 @@ export async function POST(req: Request) {
     return fail(timedOut ? "The provider took too long to answer. Try again." : "Could not reach the provider.", 502);
   }
 }
+

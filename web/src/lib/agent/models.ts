@@ -1,5 +1,4 @@
 import type { Settings } from "../types";
-import { rankModels } from "../providers";
 
 /** Talking to the model provider through the app's relay, and choosing a model that really works. */
 
@@ -56,36 +55,23 @@ export async function listModels(access: Access): Promise<{ models: string[] } |
   }
 }
 
-const PROBE: Msg[] = [{ role: "user", content: "Reply with the single word: ok" }];
-const MAX_PROBES = 6;
-
 /**
- * Find a model that actually answers. A provider's list includes models that are retired,
- * closed to new accounts or out of free quota, so each candidate gets one tiny real request
- * and the first that replies wins. The rest of the ranking is kept as fallbacks.
+ * Find the best model that actually answers. A provider's list includes models that are retired,
+ * closed to new accounts or out of free quota, so the server sends the top-ranked few one tiny real
+ * request at the same time and keeps the highest-ranked one that replies. The rest become fallbacks.
  */
 export async function connectModel(
   access: Access,
   current: string,
   onProgress: (text: string) => void,
-): Promise<{ model: string; fallbacks: string[]; models: string[] } | { error: string }> {
-  onProgress("Checking the key");
-  const listed = await listModels(access);
-  if ("error" in listed) return listed;
-  let ranked = rankModels(access.provider, listed.models);
-  // A model the person chose on purpose is tried first
-  if (current && listed.models.includes(current)) ranked = [current, ...ranked.filter((m) => m !== current)];
-  if (!ranked.length) return { error: "The key works, but this provider listed no chat models for it." };
-
-  const failed: string[] = [];
-  let last = "";
-  for (const model of ranked.slice(0, MAX_PROBES)) {
-    onProgress(`Testing ${model}`);
-    const r = await chatOnce(access, model, PROBE, null);
-    if (r.ok) return { model, fallbacks: ranked.filter((m) => m !== model && !failed.includes(m)).slice(0, 4), models: listed.models };
-    if (r.status === 401 || r.status === 403) return { error: explain(r.status, r.error) };
-    failed.push(model);
-    last = `${model}: ${r.error}`;
+): Promise<{ model: string; fallbacks: string[]; models: string[]; ms?: number } | { error: string }> {
+  onProgress("Checking the key and testing the best models");
+  try {
+    const res = await post({ action: "connect", ...access, current });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { error: res.status === 422 ? data.error : explain(res.status, data.error || `Request failed with status ${res.status}.`) };
+    return { model: data.model, fallbacks: data.fallbacks ?? [], models: data.models ?? [], ms: data.ms };
+  } catch {
+    return { error: "Could not reach the app's server. Check your connection." };
   }
-  return { error: `The key works, but none of the ${failed.length} models tried gave an answer. Last one, ${last}` };
 }

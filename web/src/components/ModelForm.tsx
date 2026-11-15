@@ -50,7 +50,7 @@ export function ModelForm({ compact = false }: { compact?: boolean }) {
     setModels(rankModels(provider, r.models));
     saveSettings({ provider, baseUrl: baseUrl.trim(), model: r.model, fallbacks: r.fallbacks });
     setKey("");
-    setMsg({ text: `Connected. ${r.model} answered a test message.${key.trim() ? " The key is saved to your account, encrypted." : ""}` });
+    setMsg({ text: `Connected to ${r.model}, the best model that answered a test message${r.ms ? ` (in ${(r.ms / 1000).toFixed(1)} s)` : ""}.${r.fallbacks.length ? ` If it fails, ${r.fallbacks.length} others take over.` : ""}${key.trim() ? " The key is saved to your account, encrypted." : ""}` });
   }
 
   /** A model picked by hand is tested before it replaces the working one. */
