@@ -8,6 +8,7 @@ import { fmtDate, fmtDuration, today } from "@/lib/date";
 import { progress, taskSessions } from "@/lib/schedule";
 import { limitsOf } from "@/lib/rules";
 import { PhaseEditor, TaskControls } from "@/components/Editors";
+import { MaterialsPanel, TaskMaterials } from "@/components/Materials";
 import { CompleteButton, fmtDoneAt, KindTag, SourceBadge } from "@/components/ui";
 import type { Goal, TaskKind } from "@/lib/types";
 
@@ -154,6 +155,7 @@ export default function PhasePage() {
                         ))}
                       </p>
                     )}
+                    <TaskMaterials goal={g} taskId={task.id} />
                     <TaskControls key={`${task.id}-${task.minutes}-${task.title}`} goal={g} task={task} phaseIndex={index} position={position} done={isDone} />
                   </div>
 
@@ -165,6 +167,13 @@ export default function PhasePage() {
         </div>
 
         <div className="space-y-6">
+          {m.notes && (
+            <div className="card text-sm">
+              <h3 className="text-muted">Details</h3>
+              <p className="mt-1 whitespace-pre-wrap leading-relaxed">{m.notes}</p>
+            </div>
+          )}
+          <MaterialsPanel key={m.id} goal={g} phaseId={m.id} />
           <div className="card space-y-4 text-sm">
             <div><h3 className="text-muted">Built on</h3><p className="mt-0.5">{m.first_principle}</p></div>
             <div><h3 className="text-muted">Support while you learn</h3><p className="mt-0.5">{m.zpd_scaffold}</p></div>

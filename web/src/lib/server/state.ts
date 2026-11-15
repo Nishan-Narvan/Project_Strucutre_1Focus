@@ -31,11 +31,18 @@ export function todayIn(timezone?: string) {
   }
 }
 
-export async function applyForUser(userId: string, op: Op, actor: Actor, requestId?: string): Promise<{ state: AppState; version: number; duplicate?: boolean }> {
+/** A time sent by the browser is used only if it is close to the server's clock. */
+function trustedNow(now?: string) {
+  const ms = now ? Date.parse(now) : NaN;
+  return Number.isFinite(ms) && Math.abs(ms - Date.now()) < 36 * 3600 * 1000 ? new Date(ms).toISOString() : new Date().toISOString();
+}
+
+export async function applyForUser(userId: string, op: Op, actor: Actor, requestId?: string, now?: string): Promise<{ state: AppState; version: number; duplicate?: boolean }> {
+  const at = trustedNow(now);
   for (let attempt = 0; attempt < 4; attempt++) {
     const row = await loadState(userId);
     if (!row) throw new NoState();
-    const next = applyOp(row.state, op, { t: todayIn(row.state.settings?.timezone) });
+    const next = applyOp(row.state, op, { t: todayIn(row.state.settings?.timezone), now: at });
     const v = await commitState({ userId, expected: row.version, state: next, actor, op: op.type, args: op, requestId, audit: AUDITED(op) });
     if (v === -2) return { ...((await loadState(userId)) ?? row), duplicate: true };
     if (v > 0) return { state: next, version: v };

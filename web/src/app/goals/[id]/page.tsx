@@ -7,7 +7,8 @@ import { daysBetween, fmtDate, fmtDuration, today } from "@/lib/date";
 import { lastSessionDate, overdue, progress } from "@/lib/schedule";
 import { isEditable, limitsOf, lockDate } from "@/lib/rules";
 import { ModuleBar } from "@/components/ui";
-import { GoalEditor, NoRoadmap, StatusBanner, StudyLog } from "@/components/Editors";
+import { GoalEditor, MemoryFileButtons, NoRoadmap, PhaseList, StatusBanner, StudyLog } from "@/components/Editors";
+import { MaterialsPanel } from "@/components/Materials";
 import { KpiPanel } from "@/components/Kpis";
 import { Road } from "@/components/Road";
 
@@ -69,8 +70,16 @@ export default function GoalPage() {
         <section aria-label="Roadmap" className="mt-8">
           <Road goal={g} selected={-1} onSelect={(i) => router.push(`/goals/${g.id}/phase/${i + 1}`)} />
           <p className="mt-2 text-xs text-muted">Open a phase to see its progress, tasks and resources.</p>
+          <PhaseList goal={g} />
         </section>
       )}
+
+      <div className="mt-8">
+        <MaterialsPanel goal={g} />
+      </div>
+      <div className="mt-6">
+        <MemoryFileButtons goalId={g.id} label="Memory file for another model" />
+      </div>
 
       <div className="mt-8">
         <KpiPanel goalId={g.id} title="KPIs for this goal" />

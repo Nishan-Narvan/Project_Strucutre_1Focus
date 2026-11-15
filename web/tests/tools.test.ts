@@ -61,7 +61,7 @@ test("every tool has a name, description, kind and a valid schema", () => {
     assert.ok(["read", "memory", "write", "destructive"].includes(t.kind));
     for (const r of t.required ?? []) assert.ok(r in t.params, `${t.name}: required "${r}" is a parameter`);
   }
-  for (const n of ["create_goal", "update_goal", "rename_goal", "pause_goal", "resume_goal", "archive_goal", "delete_goal", "set_roadmap", "create_phase", "update_phase", "delete_phase", "reorder_phases", "add_task", "update_task", "delete_task", "move_task", "reorder_tasks", "bulk_update_roadmap", "complete_session", "mark_task_done", "mark_task_undone", "log_study_time", "add_note", "edit_note", "delete_note", "skip_session", "reschedule_goal", "reschedule_session", "create_kpi", "update_kpi", "delete_kpi", "log_kpi_value", "get_kpis", "create_routine", "update_routine", "delete_routine", "create_event", "update_event", "delete_event", "get_capacity", "get_settings", "update_settings", "save_memory", "update_memory", "delete_memory", "list_memories", "export_data", "clear_demo_data", "get_overview"])
+  for (const n of ["create_goal", "update_goal", "rename_goal", "pause_goal", "resume_goal", "archive_goal", "delete_goal", "set_roadmap", "create_phase", "update_phase", "delete_phase", "reorder_phases", "add_task", "update_task", "delete_task", "move_task", "reorder_tasks", "bulk_update_roadmap", "complete_session", "mark_task_done", "mark_task_undone", "log_study_time", "add_note", "edit_note", "delete_note", "skip_session", "reschedule_goal", "reschedule_session", "create_kpi", "update_kpi", "delete_kpi", "log_kpi_value", "get_kpis", "create_routine", "update_routine", "delete_routine", "create_event", "update_event", "delete_event", "get_capacity", "get_settings", "update_settings", "save_memory", "update_memory", "delete_memory", "list_memories", "export_data", "clear_demo_data", "get_overview", "list_materials", "add_material", "update_material", "remove_material", "get_goal_history", "get_memory_file"])
     assert.ok(names.has(n), `tool ${n} exists`);
 });
 
@@ -386,4 +386,96 @@ test("ops are idempotent where ids are given", () => {
   const once = applyOp(s, op, { t: T });
   const twice = applyOp(once, op, { t: T });
   assert.equal(twice.goals.length, once.goals.length);
+});
+
+// ------------------------------------------------------------ materials, inserting, history, memory file
+
+import { buildMemoryFile } from "../src/lib/memoryFile";
+import { detectKind, titleFromUrl } from "../src/lib/materials";
+import { needsServerCopy } from "../src/lib/ops";
+
+test("materials: links and local paths, attached to goal, phase or task; recognised; bad input refused", () => {
+  assert.equal(detectKind("https://www.notion.so/Trees-and-Graphs-1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"), "notion");
+  assert.equal(detectKind("https://drive.google.com/drive/folders/abc"), "folder");
+  assert.equal(detectKind("https://docs.google.com/document/d/x/edit"), "doc");
+  assert.equal(detectKind("https://youtu.be/abc"), "video");
+  assert.equal(detectKind("D:/Notes/trees.pdf"), "pdf");
+  assert.equal(detectKind("C:/Users/me/notes.md"), "local");
+  assert.equal(titleFromUrl("https://www.notion.so/Trees-and-Graphs-1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"), "Trees and Graphs");
+  let s = fresh();
+  const g = s.goals[0];
+  const task = g.roadmap.modules[3].tasks[0];
+  s = call(s, "add_material", { goal_id: g.id, url: "https://www.notion.so/Trees-and-Graphs-1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d", phase: 4 }).state;
+  s = call(s, "add_material", { goal_id: g.id, url: "D:/Notes/trees.pdf", task_id: task.id, note: "my handwritten notes" }).state;
+  s = call(s, "add_material", { goal_id: g.id, url: "https://drive.google.com/drive/folders/abc", title: "DSA folder" }).state;
+  const mats = s.goals[0].materials!;
+  assert.equal(mats.length, 3);
+  assert.equal(mats[0].phaseId, g.roadmap.modules[3].id);
+  assert.equal(mats[1].taskId, task.id);
+  const listed = call(s, "list_materials", { goal_id: g.id, phase: 4 }).out.result as { title: string }[];
+  assert.equal(listed.length, 2, "phase listing includes its tasks' materials");
+  const rm = JSON.stringify(call(s, "get_goal_roadmap", { goal_id: g.id }).out.result);
+  assert.ok(rm.includes("Trees and Graphs") && rm.includes("trees.pdf") && rm.includes("DSA folder"), "roadmap read shows materials");
+  assert.match(bad(s, "add_material", { goal_id: g.id, url: "notion page" }), /not a link or a file path/);
+  assert.match(bad(s, "add_material", { goal_id: g.id, url: "ftp://x.org/a" }), /Only web links/);
+  s = call(s, "remove_material", { goal_id: g.id, material_id: "DSA folder" }).state;
+  assert.equal(s.goals[0].materials!.length, 2);
+});
+
+test("insert a phase between phases and a task between tasks; elaborate a phase", () => {
+  let s = fresh();
+  const g = s.goals[2];
+  s = call(s, "create_phase", { goal_id: g.id, title: "Statistics refresher", position: 2, tasks: [{ title: "Distributions", minutes: 40 }] }).state;
+  assert.equal(s.goals[2].roadmap.modules[1].title, "Statistics refresher");
+  assert.equal(s.goals[2].roadmap.modules[0].title, g.roadmap.modules[0].title, "earlier phases stay put");
+  s = call(s, "add_task", { goal_id: g.id, phase: 1, title: "Inserted second", minutes: 20, position: 2 }).state;
+  assert.equal(s.goals[2].roadmap.modules[0].tasks[1].title, "Inserted second");
+  s = call(s, "update_phase", { goal_id: g.id, phase_id: 1, details: "Vectors, then matrices, then derivatives.", approach: "Draw first", key_concepts: ["vectors", "matrices"] }).state;
+  const m = s.goals[2].roadmap.modules[0];
+  assert.equal(m.notes, "Vectors, then matrices, then derivatives.");
+  assert.equal(m.zpd_scaffold, "Draw first");
+});
+
+test("goal history records the story and get_goal_history reports quality", () => {
+  let s = fresh();
+  s = call(s, "create_goal", { title: "History test", daily_minutes: 20, study_days: "weekdays", deadline: addDays(T, 30) }).state;
+  const g = s.goals.find((x) => x.title === "History test")!;
+  s = call(s, "set_roadmap", { goal_id: g.id, phases: [{ title: "One", tasks: [{ title: "a", minutes: 20 }] }] }).state;
+  s = call(s, "add_material", { goal_id: g.id, url: "https://example.com/guide" }).state;
+  s = call(s, "update_goal", { goal_id: g.id, deadline: addDays(T, 40) }).state;
+  const h = s.goals.find((x) => x.id === g.id)!.history!;
+  assert.deepEqual(h.map((e) => e.kind), ["goal_created", "roadmap_written", "material_added", "goal_edited"]);
+  assert.match(h[3].text, /deadline .* -> /);
+  const r = call(s, "get_goal_history", { goal_id: g.id }).out.result as { timeline: unknown[]; materials_linked: number; quality: object };
+  assert.equal(r.timeline.length, 4);
+  assert.equal(r.materials_linked, 1);
+  const base = fresh();
+  const dsa = call(base, "get_goal_history", { goal_id: base.goals[0].id }).out.result as { quality: { sessions_with_notes: string } };
+  assert.match(dsa.quality.sessions_with_notes, /\d+%/);
+});
+
+test("memory file: every section, every task, every day, raw JSON", () => {
+  const base = fresh();
+  const s = call(base, "add_material", { goal_id: base.goals[0].id, url: "D:/Notes/trees.pdf" }).state;
+  const g = s.goals[0];
+  const text = buildMemoryFile(s, T, { goalId: g.id });
+  for (const h of ["## How to read this file", "## The person", `## Goal: ${g.title}`, "### Where it stands now", "### Quality of work", "### Roadmap", "### Materials", "### Daily log since the start", "### Change history", "## Raw data (JSON)"]) assert.ok(text.includes(h), `has ${h}`);
+  for (const m of g.roadmap.modules) for (const t of m.tasks) assert.ok(text.includes(t.title), `task ${t.title} listed`);
+  const pastDates = [...new Set(g.sessions.filter((x) => x.date < T).map((x) => x.date))];
+  for (const d of pastDates) assert.ok(text.includes(`- ${d} `), `day ${d} in the log`);
+  assert.ok(/- \[x\] /.test(text) && /- \[ \] /.test(text), "done and remaining marked");
+  assert.ok(text.includes("trees.pdf"), "materials included");
+  const json = JSON.parse(text.slice(text.indexOf("```json") + 7, text.lastIndexOf("```")));
+  assert.equal(json.goals[0].id, g.id);
+  assert.ok(!text.includes("apiKey\":\"x"), "no keys");
+  const all = buildMemoryFile(s, T);
+  assert.ok(s.goals.every((x) => all.includes(`## Goal: ${x.title}`)), "all goals when no goal is given");
+  assert.ok(call(s, "get_memory_file", { goal_id: g.id }).out.result === buildMemoryFile(s, T, { goalId: g.id, generatedAt: `${T}T10:00` }));
+});
+
+test("fast saves: only re-planning changes need the server's copy", () => {
+  assert.equal(needsServerCopy({ type: "add_material", goalId: "g", material: { id: "m", title: "t", url: "https://x.org", kind: "link", addedAt: T } }), false);
+  assert.equal(needsServerCopy({ type: "complete_session", goalId: "g", sessionId: "s", note: "", at: T }), false);
+  assert.equal(needsServerCopy({ type: "reschedule_goal", goalId: "g" }), true);
+  assert.equal(needsServerCopy({ type: "batch", ops: [{ type: "delete_memory", id: "m" }, { type: "reschedule_goal", goalId: "g" }] }), true);
 });

@@ -1,4 +1,5 @@
-import type { AgentTurn, AppState, DayEvent, Goal, GoalStatus, Kpi, KpiValue, Memory, Module, Roadmap, Routine, Settings, StudyLog, Task } from "./types";
+import type { AgentTurn, AppState, DayEvent, Goal, GoalEvent, GoalStatus, Kpi, KpiValue, Material, Memory, Module, Roadmap, Routine, Settings, StudyLog, Task } from "./types";
+import { checkMaterialUrl, detectKind, MATERIAL_LABEL } from "./materials";
 import { buildSessions, taskIndex } from "./schedule";
 import { isActive, isEditable, limitsOf } from "./rules";
 import { createDemoState, SAMPLE_NOTES } from "./demo";
@@ -15,7 +16,8 @@ import { cleanPhase, cleanTask, RoadmapError } from "./roadmap";
 
 /** Goal fields a person (or an assistant) may edit. */
 export type GoalPatch = Partial<Pick<Goal, "title" | "outcome" | "currentLevel" | "targetLevel" | "known" | "prefs" | "hoursPerDay" | "days" | "prefStart" | "startDate" | "deadline" | "color">>;
-export type PhasePatch = Partial<Pick<Module, "title" | "objective" | "checkpoint" | "level" | "key_concepts" | "first_principle" | "zpd_scaffold">>;
+export type PhasePatch = Partial<Pick<Module, "title" | "objective" | "checkpoint" | "level" | "key_concepts" | "first_principle" | "zpd_scaffold" | "notes">>;
+export type MaterialPatch = Partial<Pick<Material, "title" | "url" | "kind" | "note" | "phaseId" | "taskId">>;
 export type TaskPatch = Partial<Pick<Task, "title" | "detail" | "minutes" | "kind">>;
 export type KpiPatch = Partial<Pick<Kpi, "name" | "unit" | "target" | "direction" | "frequency" | "goalId">>;
 
@@ -70,12 +72,30 @@ export type Op =
   | { type: "clear_demo_notes" }
   | { type: "reset_demo" }
   // several changes saved together, all or nothing
+  // materials
+  | { type: "add_material"; goalId: string; material: Material }
+  | { type: "update_material"; goalId: string; materialId: string; patch: MaterialPatch }
+  | { type: "remove_material"; goalId: string; materialId: string }
   | { type: "batch"; ops: Op[] };
 
 export type OpType = Op["type"];
 
 /** Ops whose before-state is kept in the audit log for undo. Chat traffic is not worth undoing. */
-export const AUDITED = (op: Op) => op.type !== "save_chat" && op.type !== "new_chat";
+/**
+ * Changes whose before-state is kept for undo. Frequent progress taps (ticking a session, a note,
+ * a KPI value, a look tweak) are left out: each is reversed by its own opposite, and copying the
+ * whole data on every tap is what made saving slow.
+ */
+const NOT_AUDITED = new Set<OpType>(["save_chat", "new_chat", "complete_session", "reopen_session", "complete_task", "reopen_task", "set_session_note", "skip_session", "unskip_session", "log_kpi_value"]);
+export const AUDITED = (op: Op) => !NOT_AUDITED.has(op.type) && !(op.type === "save_settings" && !op.patch.limits && op.patch.autoApplySafe === undefined);
+
+/**
+ * Changes after which the server's copy can differ from what the browser computed (re-planning makes
+ * new session ids), so the server sends its whole copy back. For every other change it sends only the
+ * new version number, which keeps saving fast.
+ */
+const REPLANS = new Set<OpType>(["reschedule_goal", "add_goal", "update_goal", "set_goal_status", "set_roadmap", "add_phase", "delete_phase", "reorder_phases", "add_task", "update_task", "remove_task", "move_task", "reorder_tasks", "reset_demo"]);
+export const needsServerCopy = (op: Op): boolean => (op.type === "batch" ? op.ops.some(needsServerCopy) : REPLANS.has(op.type));
 
 /** A change the rules refuse. The message is shown to the person or returned to the AI as is. */
 export class OpError extends Error {}
@@ -83,6 +103,8 @@ export class OpError extends Error {}
 export interface OpContext {
   /** Today's date where the person is (YYYY-MM-DD). */
   t: string;
+  /** Now, as an ISO timestamp, for the goal history. Defaults to the start of `t`. */
+  now?: string;
 }
 
 const MAX_CHAT_TURNS = 80;
@@ -167,7 +189,7 @@ function checkKpi(k: Pick<Kpi, "name" | "unit" | "target">) {
   if (!Number.isFinite(k.target)) throw new OpError("A KPI needs a numeric target.");
 }
 
-export function applyOp(s: AppState, op: Op, ctx: OpContext): AppState {
+function applyCore(s: AppState, op: Op, ctx: OpContext): AppState {
   const L = limitsOf(s);
   try {
     switch (op.type) {
@@ -293,7 +315,10 @@ export function applyOp(s: AppState, op: Op, ctx: OpContext): AppState {
         return withGoal(s, op.goalId, (g) => {
           const i = phaseIndex(g, op.phaseId);
           locked(s, g, ctx, "phases can be removed");
-          return replan(withRoadmap(g, g.roadmap.modules.filter((_, j) => j !== i)), ctx.t);
+          // Materials of the phase and its tasks stay with the goal instead of disappearing
+          const gone = new Set([op.phaseId, ...g.roadmap.modules[i].tasks.map((t) => t.id)]);
+          const materials = (g.materials ?? []).map((m) => (gone.has(m.phaseId ?? "") || gone.has(m.taskId ?? "") ? { ...m, phaseId: undefined, taskId: undefined } : m));
+          return replan({ ...withRoadmap(g, g.roadmap.modules.filter((_, j) => j !== i)), materials }, ctx.t);
         });
 
       case "reorder_phases":
@@ -330,7 +355,10 @@ export function applyOp(s: AppState, op: Op, ctx: OpContext): AppState {
           if (!taskIndex(g)[op.taskId]) throw new OpError("That task does not exist.");
           locked(s, g, ctx, "tasks can be removed");
           const modules = g.roadmap.modules.map((m) => ({ ...m, tasks: m.tasks.filter((t) => t.id !== op.taskId) }));
-          return replan({ ...withRoadmap(g, modules), sessions: g.sessions.filter((x) => x.taskId !== op.taskId) }, ctx.t);
+          const phaseId = taskIndex(g)[op.taskId].module.id;
+          // A removed task's materials move up to its phase
+          const materials = (g.materials ?? []).map((m) => (m.taskId === op.taskId ? { ...m, taskId: undefined, phaseId } : m));
+          return replan({ ...withRoadmap(g, modules), sessions: g.sessions.filter((x) => x.taskId !== op.taskId), materials }, ctx.t);
         });
 
       case "move_task":
@@ -469,6 +497,35 @@ export function applyOp(s: AppState, op: Op, ctx: OpContext): AppState {
         // The person's own settings are not demo data, so a reset keeps them
         return { ...normalizeState(createDemoState()), settings: s.settings };
 
+      // ---------------- materials
+      case "add_material":
+        return withGoal(s, op.goalId, (g) => {
+          if ((g.materials ?? []).some((m) => m.id === op.material.id)) return g;
+          const bad = checkMaterialUrl(op.material.url);
+          if (bad) throw new OpError(bad);
+          checkPlace(g, op.material);
+          if ((g.materials ?? []).length >= 300) throw new OpError("A goal can hold at most 300 materials.");
+          const m: Material = { ...op.material, url: op.material.url.trim(), title: op.material.title.trim().slice(0, 200) || op.material.url.trim().slice(0, 200), kind: op.material.kind || detectKind(op.material.url), note: clean(op.material.note ?? "") };
+          return { ...g, materials: [...(g.materials ?? []), m] };
+        });
+
+      case "update_material":
+        return withGoal(s, op.goalId, (g) => {
+          const m = (g.materials ?? []).find((x) => x.id === op.materialId);
+          if (!m) throw new OpError(`That goal has no material with id "${op.materialId}".`);
+          const next: Material = { ...m, ...op.patch };
+          if (op.patch.url !== undefined) {
+            const bad = checkMaterialUrl(next.url);
+            if (bad) throw new OpError(bad);
+            if (op.patch.kind === undefined) next.kind = detectKind(next.url);
+          }
+          checkPlace(g, next);
+          return { ...g, materials: (g.materials ?? []).map((x) => (x.id === m.id ? next : x)) };
+        });
+
+      case "remove_material":
+        return withGoal(s, op.goalId, (g) => ({ ...g, materials: (g.materials ?? []).filter((m) => m.id !== op.materialId) }));
+
       case "batch":
         return op.ops.reduce((acc, o, i) => {
           try {
@@ -488,6 +545,88 @@ export function applyOp(s: AppState, op: Op, ctx: OpContext): AppState {
     if (e instanceof RoadmapError) throw new OpError(e.message);
     throw e;
   }
+}
+
+function checkPlace(g: Goal, m: Pick<Material, "phaseId" | "taskId">) {
+  if (m.phaseId && !g.roadmap.modules.some((p) => p.id === m.phaseId)) throw new OpError(`That goal has no phase with id "${m.phaseId}".`);
+  if (m.taskId && !taskIndex(g)[m.taskId]) throw new OpError(`That goal has no task with id "${m.taskId}".`);
+}
+
+const MAX_HISTORY = 1000;
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const fieldNames: Record<string, string> = { hoursPerDay: "daily time", days: "study days", prefStart: "start time", startDate: "start date", currentLevel: "current level", targetLevel: "target level", known: "prior knowledge", prefs: "learning preferences" };
+
+/** One plain sentence for the goal history, or null for changes that are not part of a goal's story. */
+function describe(op: Op, before: AppState, after: AppState): { goalId: string; kind: string; text: string } | null {
+  const g0 = "goalId" in op ? before.goals.find((g) => g.id === op.goalId) : undefined;
+  const g1 = "goalId" in op ? after.goals.find((g) => g.id === op.goalId) : undefined;
+  const phase = (g: Goal | undefined, id: string) => g?.roadmap.modules.find((m) => m.id === id)?.title ?? "a phase";
+  const task = (g: Goal | undefined, id: string) => (g ? taskIndex(g)[id]?.task.title : undefined) ?? "a task";
+  const count = (g: Goal) => `${plural(g.roadmap.modules.length, "phase")} and ${plural(g.roadmap.modules.reduce((n, m) => n + m.tasks.length, 0), "task")}`;
+  switch (op.type) {
+    case "add_goal":
+      return { goalId: op.goal.id, kind: "goal_created", text: `Goal created: ${Math.round(op.goal.hoursPerDay * 60)} min a day, ${op.goal.startDate} to ${op.goal.deadline}${op.goal.roadmap.modules.length ? `, with a roadmap of ${count(op.goal)}` : ", no roadmap yet"}.` };
+    case "update_goal": {
+      const keys = Object.keys(op.patch).filter((k) => JSON.stringify(op.patch[k as keyof GoalPatch]) !== JSON.stringify(g0?.[k as keyof Goal]));
+      if (!keys.length) return null;
+      const detail = keys.map((k) => (k === "deadline" ? `deadline ${g0?.deadline} -> ${op.patch.deadline}` : k === "hoursPerDay" ? `daily time ${Math.round((g0?.hoursPerDay ?? 0) * 60)} -> ${Math.round((op.patch.hoursPerDay ?? 0) * 60)} min` : fieldNames[k] ?? k));
+      return { goalId: op.goalId, kind: "goal_edited", text: `Changed ${detail.join(", ")}.` };
+    }
+    case "set_goal_status":
+      return { goalId: op.goalId, kind: `goal_${op.status === "active" ? "resumed" : op.status}`, text: `Goal ${op.status === "active" ? "resumed" : op.status}.` };
+    case "set_roadmap":
+      return g1 ? { goalId: op.goalId, kind: g0?.roadmap.modules.length ? "roadmap_replaced" : "roadmap_written", text: `Roadmap ${g0?.roadmap.modules.length ? "replaced" : "written"}: ${count(g1)}.` } : null;
+    case "add_phase":
+      return { goalId: op.goalId, kind: "phase_added", text: `Phase added: "${op.phase.title}"${op.index !== undefined ? ` at position ${op.index + 1}` : ""}${op.phase.tasks.length ? ` with ${plural(op.phase.tasks.length, "task")}` : ""}.` };
+    case "update_phase":
+      return { goalId: op.goalId, kind: "phase_edited", text: `Phase "${phase(g1, op.phaseId)}" edited (${Object.keys(op.patch).join(", ").replace("zpd_scaffold", "approach").replace("first_principle", "built on").replace("key_concepts", "key concepts")}).` };
+    case "delete_phase":
+      return { goalId: op.goalId, kind: "phase_removed", text: `Phase removed: "${phase(g0, op.phaseId)}".` };
+    case "reorder_phases":
+      return { goalId: op.goalId, kind: "phases_reordered", text: "Phases reordered." };
+    case "add_task":
+      return { goalId: op.goalId, kind: "task_added", text: `Task added to phase ${op.moduleIndex + 1}: "${op.task.title}" (${op.task.minutes} min).` };
+    case "update_task":
+      return { goalId: op.goalId, kind: "task_edited", text: `Task "${task(g1, op.taskId)}" edited (${Object.keys(op.patch).join(", ")}).` };
+    case "remove_task":
+      return { goalId: op.goalId, kind: "task_removed", text: `Task removed: "${task(g0, op.taskId)}".` };
+    case "move_task":
+      return { goalId: op.goalId, kind: "task_moved", text: `Task "${task(g0, op.taskId)}" moved to phase "${phase(g1, op.toPhaseId)}".` };
+    case "reorder_tasks":
+      return { goalId: op.goalId, kind: "tasks_reordered", text: `Tasks reordered in phase "${phase(g1, op.phaseId)}".` };
+    case "reschedule_goal":
+      return { goalId: op.goalId, kind: "replanned", text: "Re-planned from today." };
+    case "skip_session":
+      return { goalId: op.goalId, kind: "session_skipped", text: `Skipped the ${g0?.sessions.find((x) => x.id === op.sessionId)?.date ?? ""} session: ${op.reason || "no reason given"}.` };
+    case "move_session":
+      return { goalId: op.goalId, kind: "session_moved", text: `Moved a session from ${g0?.sessions.find((x) => x.id === op.sessionId)?.date ?? "?"} to ${op.date}${op.start ? ` at ${op.start}` : ""}.` };
+    case "log_study":
+      return { goalId: op.goalId, kind: "study_logged", text: `Logged ${op.log.minutes} min of extra study for ${op.log.date}${op.log.note ? `: ${op.log.note}` : ""}.` };
+    case "add_material":
+      return { goalId: op.goalId, kind: "material_added", text: `Material added: ${MATERIAL_LABEL[op.material.kind] ?? "link"} "${op.material.title}"${op.material.taskId ? ` for task "${task(g1, op.material.taskId)}"` : op.material.phaseId ? ` for phase "${phase(g1, op.material.phaseId)}"` : ""}.` };
+    case "update_material":
+      return { goalId: op.goalId, kind: "material_edited", text: `Material "${(g1?.materials ?? []).find((m) => m.id === op.materialId)?.title ?? ""}" edited.` };
+    case "remove_material":
+      return { goalId: op.goalId, kind: "material_removed", text: `Material removed: "${(g0?.materials ?? []).find((m) => m.id === op.materialId)?.title ?? ""}".` };
+    case "add_kpi":
+      return op.kpi.goalId ? { goalId: op.kpi.goalId, kind: "kpi_added", text: `Started tracking KPI "${op.kpi.name}" (target ${op.kpi.target} ${op.kpi.unit}).` } : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Apply a change, and record it in the goal's permanent history when it is part of the goal's story
+ * (created, roadmap written, phase added, material added, schedule changed…). Session ticks are not
+ * recorded here: the sessions themselves already hold that day-by-day record.
+ */
+export function applyOp(s: AppState, op: Op, ctx: OpContext): AppState {
+  const next = applyCore(s, op, ctx);
+  if (next === s || op.type === "batch") return next;
+  const e = describe(op, s, next);
+  if (!e) return next;
+  const event: GoalEvent = { at: ctx.now ?? `${ctx.t}T00:00:00.000Z`, kind: e.kind, text: e.text };
+  return { ...next, goals: next.goals.map((g) => (g.id === e.goalId ? { ...g, history: [...(g.history ?? []), event].slice(-MAX_HISTORY) } : g)) };
 }
 
 /** Fill in whatever an older saved state lacks, and drop secrets. Used on load and on import. */

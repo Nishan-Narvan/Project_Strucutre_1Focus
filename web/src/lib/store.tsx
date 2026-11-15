@@ -17,7 +17,8 @@ import type { AgentTurn, AppState, DayEvent, Goal, MemoryKind, Memory, Routine, 
 
 /** Where the browser kept everything before accounts. Read once, for importing. */
 export const LEGACY_KEY = "pathwise.demo.v2";
-const POLL_MS = 5000;
+/** How often to look for changes made elsewhere (Claude, another device), while the tab is visible. */
+const POLL_MS = 15000;
 const RETRY_MS = 3000;
 
 export type Status = "loading" | "unconfigured" | "signedOut" | "setup" | "ready" | "error";
@@ -79,6 +80,8 @@ interface Pending {
   op: Op;
   requestId: string;
   actor: Actor;
+  /** When the change was made; the server records the same time, so both copies stay identical. */
+  now: string;
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -122,7 +125,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Replay waiting ops on the newest server copy; one that no longer applies is dropped
     pending.current = pending.current.filter((p) => {
       try {
-        s = applyOp(s, p.op, { t });
+        s = applyOp(s, p.op, { t, now: p.now });
         return true;
       } catch {
         return false;
@@ -151,7 +154,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const p = pending.current[0];
         let res: Response;
         try {
-          const body = JSON.stringify(p);
+          const body = JSON.stringify({ ...p, baseVersion: confirmed.current.version });
           // keepalive lets a change finish sending even if the page is closing (browsers allow it for small requests)
           res = await fetch("/api/ops", { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: body.length < 60000 });
         } catch {
@@ -168,7 +171,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         pending.current = pending.current.filter((x) => x !== p);
         if (res.ok) {
           setNotice((n) => (n?.startsWith("Can't reach") ? null : n));
-          accept(data);
+          if (data.state) accept(data);
+          else {
+            // Only a version came back: the server's copy equals ours with this change applied
+            confirmed.current = { state: applyOp(confirmed.current.state, p.op, { t: today(), now: p.now }), version: data.version };
+            recompute();
+          }
         } else {
           setNotice(data.error || "A change could not be saved.");
           recompute();
@@ -185,9 +193,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
    */
   const attempt = useCallback(
     (op: Op, actor: Actor): string | null => {
+      const now = new Date().toISOString();
       let next: AppState;
       try {
-        next = applyOp(local.current, op, { t: today() });
+        next = applyOp(local.current, op, { t: today(), now });
       } catch (e) {
         if (e instanceof OpError) {
           if (actor === "web") setNotice(e.message);
@@ -196,7 +205,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         throw e;
       }
       if (next === local.current) return ""; // nothing changed (a duplicate)
-      pending.current.push({ op, requestId: uid() + uid(), actor });
+      pending.current.push({ op, requestId: uid() + uid(), actor, now });
       local.current = next;
       setView(next);
       setSaving(true);

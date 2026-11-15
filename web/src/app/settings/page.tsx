@@ -6,6 +6,7 @@ import { ModelForm } from "@/components/ModelForm";
 import { McpConnections } from "@/components/McpConnections";
 import { ClaudeConnector } from "@/components/ClaudeConnector";
 import { AppearanceSettings } from "@/components/Appearance";
+import { MemoryFileButtons } from "@/components/Editors";
 
 export default function SettingsPage() {
 
@@ -19,11 +20,21 @@ export default function SettingsPage() {
             <h2 id="model-title" className="mb-4 text-base font-medium">Model and API key</h2>
             <ModelForm />
           </section>
-          <AppearanceSettings />
-          <BehaviourSettings />
-          <DashboardSettings />
           <ClaudeConnector />
-          <McpConnections />
+          <section className="card space-y-3" aria-label="Memory file">
+            <h2 className="text-base font-medium">Memory file</h2>
+            <p className="text-sm text-muted">Everything about all your goals in one document: roadmaps, what is done and left, daily history, changes, materials, KPIs and your constraints. Give it to any model to carry on.</p>
+            <MemoryFileButtons label="All goals" />
+          </section>
+          <AppearanceSettings />
+          <details className="card p-0">
+            <summary className="cursor-pointer p-5 text-base font-medium">Advanced: limits, Goals page sections, outside services</summary>
+            <div className="space-y-6 border-t border-line p-5">
+              <BehaviourSettings />
+              <DashboardSettings />
+              <McpConnections />
+            </div>
+          </details>
         </div>
 
         <aside className="space-y-4">

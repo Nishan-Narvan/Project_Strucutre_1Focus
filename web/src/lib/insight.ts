@@ -222,6 +222,7 @@ export function snapshotText(state: AppState, t: string) {
     );
     L.push(`- This week: ${i.track.weekDone} of ${i.track.weekTotal} roadmap tasks done, ${i.track.missedDays} missed days. Next task: ${i.track.next?.title ?? "none, roadmap complete"}.`);
     if (g.prefs) L.push(`- Learning preferences: ${g.prefs}`);
+    if (g.materials?.length) L.push(`- Materials linked: ${g.materials.length} (${[...new Set(g.materials.map((m) => m.kind))].join(", ")}); list_materials shows them.`);
     for (const n of i.notes) L.push(`- Note ${n.date} on "${n.task}": ${n.note}`);
   }
   const inactive = state.goals.filter((g) => !isActive(g));

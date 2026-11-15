@@ -32,6 +32,8 @@ export interface Module {
   checkpoint: string;
   resources: Resource[];
   tasks: Task[];
+  /** Longer explanation of the phase, written by the person or an assistant. */
+  notes?: string;
 }
 
 export interface Roadmap {
@@ -112,6 +114,33 @@ export interface Goal {
   statusAt?: string;
   /** Study done outside the plan. Counts toward time KPIs, not roadmap progress. */
   logs?: StudyLog[];
+  /** Notion pages, Drive folders, docs, videos, files on the person's computer: what exists for this goal. */
+  materials?: Material[];
+  /** Permanent timeline of what happened to the goal (created, roadmap written, phases added…). */
+  history?: GoalEvent[];
+}
+
+export type MaterialKind = "notion" | "drive" | "folder" | "doc" | "sheet" | "slides" | "pdf" | "video" | "repo" | "local" | "link";
+
+export interface Material {
+  id: string;
+  title: string;
+  /** A web link, or a path on the person's computer (for example C:/notes/x.pdf or /Users/me/x.md). */
+  url: string;
+  kind: MaterialKind;
+  /** Attached to one phase, or one task; neither = the goal as a whole. */
+  phaseId?: string;
+  taskId?: string;
+  note?: string;
+  addedAt: string; // ISO
+}
+
+export interface GoalEvent {
+  at: string; // ISO
+  /** The kind of change, for example roadmap_written, phase_added, material_added. */
+  kind: string;
+  /** One plain sentence. */
+  text: string;
 }
 
 export type GoalStatus = "active" | "paused" | "archived";

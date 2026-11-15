@@ -13,7 +13,19 @@ export const runtime = "nodejs";
  *   DELETE -> turn the connector off
  */
 
-const urlFor = (req: Request, token: string) => `${new URL(req.url).origin}/api/connector/${token}/mcp`;
+/**
+ * The public address of the app, so a URL made while running locally still points at the deployed site:
+ * APP_URL if set, else Vercel's production domain, else the address the request came in on.
+ */
+function appOrigin(req: Request) {
+  const set = process.env.APP_URL?.trim().replace(/\/+$/, "");
+  if (set) return set;
+  const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  if (vercel) return `https://${vercel}`;
+  return new URL(req.url).origin;
+}
+
+const urlFor = (req: Request, token: string) => `${appOrigin(req)}/api/connector/${token}/mcp`;
 
 export async function GET(req: Request) {
   return withUser(async (user) => {

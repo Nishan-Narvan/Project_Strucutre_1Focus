@@ -29,6 +29,12 @@ and shared by the in-app assistant and the MCP connector:
 - Every change is dry-run first, so one the rules would refuse is reported at once instead of being offered
   for confirmation. Every change lands in the audit log with who made it, and `undo_last_change` reverses it.
 
+## Materials, history and the memory file
+
+- **Materials:** link what already exists for a goal, phase or task: Notion pages, Google Drive files and folders, docs, PDFs, videos, repos, or a path to a file on your computer. The assistant and Claude list them (`list_materials`) and open the ones they can reach with their own Notion or Drive connectors.
+- **History:** every change to a goal's plan is recorded with a date: created, roadmap written, phases and tasks added, materials linked, schedule changes. `get_goal_history` adds quality figures: on-time rate, delays, missed and skipped sessions, notes, minutes per week.
+- **Memory file:** on a goal page or in Settings, **Download** or **Copy** one Markdown file with everything: your constraints, the roadmap with done and remaining tasks, the daily log since creation, the change history, materials, KPIs and the raw data as JSON. Paste it into any model to carry on. Claude can fetch it with `get_memory_file`.
+
 ## Connect Claude
 
 1. In the deployed app, open **Settings → Use with Claude on your Claude plan → Turn on**, and copy the URL.
@@ -41,7 +47,7 @@ The URL holds a secret; treat it like a password. "Make a new URL" in Settings r
 ## Tools
 
 <!-- tools:start -->
-56 tools. Inputs marked * are required. Change tools also accept `confirm_token` (second call, after the person agrees) and `request_id` (safe retries).
+62 tools. Inputs marked * are required. Change tools also accept `confirm_token` (second call, after the person agrees) and `request_id` (safe retries).
 
 | Tool | Kind | What it does | Inputs | Example |
 |---|---|---|---|---|
@@ -61,7 +67,7 @@ The URL holds a secret; treat it like a password. "Make a new URL" in Settings r
 | `delete_goal` | **destructive** | Delete a goal for good, with its roadmap, sessions, notes and KPIs. | `goal_id`* | `{"goal_id":"Crack DSA for coding interviews"}` |
 | `set_roadmap` | change | Write or replace a goal's whole roadmap: phases in order, each with title, objective, checkpoint, resources and tasks (title, minutes, kind, detail). | `goal_id`*, `summary`, `first_principles`, `phases`* | `{"goal_id":"Learn Rust","summary":"Ownership first.","phases":[{"title":"Syntax and ownership","checkpoint":"Explain borrowing","tasks":[{"title":"The Book ch. 1-4","minutes":60,"kind":"learn"}]}]}` |
 | `create_phase` | change | Add a phase to a goal's roadmap, with its tasks, at a position (default: the end). | `goal_id`*, `position`, `id`, `title`*, `objective`, `checkpoint`, `level`, `key_concepts`, `resources`, `tasks` | `{"goal_id":"Crack DSA for coding interviews","title":"Learn Rust","position":1}` |
-| `update_phase` | change | Change a phase's title, objective, checkpoint, level or key concepts. | `goal_id`*, `phase_id`*, `title`, `objective`, `checkpoint`, `level`, `key_concepts` | `{"goal_id":"Crack DSA for coding interviews","phase_id":2,"title":"Learn Rust"}` |
+| `update_phase` | change | Change or elaborate a phase: title, objective, checkpoint, level, key concepts, details (a longer explanation of what the phase covers and how), approach (how to tackle it) and built_on (the idea it rests on). | `goal_id`*, `phase_id`*, `title`, `objective`, `checkpoint`, `level`, `key_concepts`, `details`, `approach`, `built_on` | `{"goal_id":"Crack DSA for coding interviews","phase_id":2,"title":"Learn Rust"}` |
 | `delete_phase` | **destructive** | Remove a phase and its tasks from a roadmap. | `goal_id`*, `phase_id`* | `{"goal_id":"Crack DSA for coding interviews","phase_id":2}` |
 | `reorder_phases` | change | Put a goal's phases in a new order. | `goal_id`*, `order`* | `{"goal_id":"Crack DSA for coding interviews","order":["p1","p3","p2"]}` |
 | `add_task` | change | Add one task to a phase of a goal's roadmap, at a position (default: the end of the phase). | `goal_id`*, `phase`*, `title`*, `minutes`*, `kind`, `detail`, `position` | `{"goal_id":"Crack DSA for coding interviews","phase":2,"title":"Learn Rust","minutes":40,"kind":"practice"}` |
@@ -97,6 +103,12 @@ The URL holds a secret; treat it like a password. "Make a new URL" in Settings r
 | `save_memory` | memory | Remember one durable thing about the person for future conversations: a preference, a constraint, a commitment they made, or a pattern or lesson the data supports. | `kind`*, `text`* | `{"kind":"preference","text":"Studies best before work."}` |
 | `update_memory` | memory | Correct or refine a saved memory, keeping its id. | `memory_id`*, `text`*, `kind` | `{"memory_id":"m3x9","text":"Studies best before work.","kind":"practice"}` |
 | `delete_memory` | **destructive** | Delete a saved memory that turned out wrong or out of date. | `memory_id`* | `{"memory_id":"m3x9"}` |
+| `list_materials` | read | Materials linked to a goal: Notion pages, Google Drive folders and files, docs, sheets, PDFs, videos, code repos, and paths to files on the person's computer, each with what it is for (the goal, a phase or a task). | `goal_id`*, `phase`, `task_id` | `{"goal_id":"Crack DSA for coding interviews","phase":2}` |
+| `add_material` | change | Link a material to a goal, or to one of its phases or tasks: a Notion page, a Google Drive file or folder, a doc, a PDF, a video, a repo, any web page, or a path to a file on the person's computer. | `goal_id`*, `url`*, `title`, `phase`, `task_id`, `kind`, `note` | `{"goal_id":"Crack DSA for coding interviews","title":"Learn Rust"}` |
+| `update_material` | change | Change a material's title, link, note or where it is attached (goal, phase or task). | `goal_id`*, `material_id`*, `title`, `url`, `note`, `phase`, `task_id`, `whole_goal` | `{"goal_id":"Crack DSA for coding interviews","title":"Learn Rust"}` |
+| `remove_material` | **destructive** | Unlink a material from a goal. | `goal_id`*, `material_id`* | `{"goal_id":"Crack DSA for coding interviews"}` |
+| `get_goal_history` | read | The story of one goal since it was created: a dated timeline of every change (created, roadmap written or replaced, phases and tasks added or removed, materials added, schedule changes, pauses), plus the quality of the work: sessions done on time, delays, missed and skipped sessions, how often notes were written, tasks done, extra study, and minutes per week since the start. | `goal_id`* | `{"goal_id":"Crack DSA for coding interviews"}` |
+| `get_memory_file` | read | Everything about one goal (or all goals) as one Markdown document another model can read and carry on from: the person and their constraints, the goal, where it stands, quality of work, the roadmap with done and remaining tasks and notes, materials, the daily log since creation, the change history, KPIs and the raw data as JSON. | `goal_id`, `include_json` | `{"goal_id":"Crack DSA for coding interviews"}` |
 | `export_data` | read | Everything in the account as JSON: goals with roadmaps and sessions, routines, events, KPIs, memories and settings (no keys or tokens). | none | `{}` |
 | `clear_demo_data` | **destructive** | Remove the sample data the app starts with: the seeded session notes (the same few sentences repeated across goals) and, if remove_demo_goals is true, the three sample goals. | `remove_demo_goals` | `{"remove_demo_goals":false}` |
 | `undo_last_change` | **destructive** | Reverse the most recent change to the person's data, whoever made it. | none | `{}` |

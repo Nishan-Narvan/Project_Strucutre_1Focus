@@ -11,7 +11,7 @@ import { asOne, BY_NAME, dryRun, inputSchema, needsApproval, runSpec, TOOLS } fr
 
 const MAX_MCP_TOOLS = 60;
 /** Left out in the app: the overview is already in the assistant's prompt, and an export is for Claude or a download. */
-const NOT_IN_APP = new Set(["get_overview", "export_data"]);
+const NOT_IN_APP = new Set(["get_overview", "export_data", "get_memory_file"]);
 
 export interface ToolDef {
   type: "function";

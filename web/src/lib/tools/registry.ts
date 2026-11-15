@@ -1,4 +1,4 @@
-import type { AgentTurn, AppState, DashboardWidget, Goal, Kpi, KpiSource, Memory, MemoryKind, Routine, TaskKind } from "../types";
+import type { AgentTurn, AppState, DashboardWidget, Goal, Kpi, KpiSource, Material, MaterialKind, Memory, MemoryKind, Routine, TaskKind } from "../types";
 import { addDays, daysBetween, fmtDuration, hhmm, uid, weekday, WEEKDAYS } from "../date";
 import { layoutDay, progress, taskIndex } from "../schedule";
 import { isActive, isEditable, limitsOf } from "../rules";
@@ -7,6 +7,8 @@ import { AUTO_KPIS, kpiReport } from "../kpi";
 import { cleanPhase, cleanRoadmap, cleanTask, emptyRoadmap, RoadmapError, roadmapForAI, TASK_KINDS, type PhaseInput, type RoadmapInput } from "../roadmap";
 import { SAMPLE_NOTES } from "../demo";
 import { recall } from "../agent/recall";
+import { checkMaterialUrl, detectKind, MATERIAL_LABEL, materialsFor, placeOf, titleFromUrl } from "../materials";
+import { buildMemoryFile, workQuality } from "../memoryFile";
 import { applyOp, OpError, type Op } from "../ops";
 import { Args, DAY_LABEL, ToolInputError } from "./args";
 
@@ -242,17 +244,22 @@ tool({
     const g = findGoal(ctx.state, a.req("goal_id"));
     const track = roadmapTrack(g, ctx.t);
     const r = roadmapForAI(g.roadmap);
+    const mats = (where: { phaseId?: string; taskId?: string }) =>
+      (g.materials ?? []).filter((m) => (where.taskId ? m.taskId === where.taskId : m.phaseId === where.phaseId && !m.taskId)).map((m) => ({ id: m.id, title: m.title, url: m.url, kind: m.kind }));
     const phases = r.phases.map((p, i) => ({
       number: i + 1,
       ...p,
+      ...(g.roadmap.modules[i].notes ? { details: g.roadmap.modules[i].notes } : {}),
+      ...(mats({ phaseId: p.id }).length ? { materials: mats({ phaseId: p.id }) } : {}),
       tasks: p.tasks.map((task) => {
         const open = g.sessions.filter((x) => x.taskId === task.id && !x.done).map((x) => x.date);
         const original = g.roadmap.modules[i].tasks.find((x) => x.id === task.id);
-        return { ...task, done: original ? track.isDone(original) : false, ...(open.length ? { scheduled: open[0] === open[open.length - 1] ? open[0] : `${open[0]} to ${open[open.length - 1]}` } : {}) };
+        const tm = mats({ taskId: task.id });
+        return { ...task, done: original ? track.isDone(original) : false, ...(open.length ? { scheduled: open[0] === open[open.length - 1] ? open[0] : `${open[0]} to ${open[open.length - 1]}` } : {}), ...(tm.length ? { materials: tm } : {}) };
       }),
     }));
     return {
-      result: { goal_id: g.id, goal: g.title, locked: !isEditable(g, limitsOf(ctx.state).editWindowDays, ctx.t), max_tasks_per_phase: limitsOf(ctx.state).maxTasksPerModule, ...r, phases },
+      result: { goal_id: g.id, goal: g.title, locked: !isEditable(g, limitsOf(ctx.state).editWindowDays, ctx.t), max_tasks_per_phase: limitsOf(ctx.state).maxTasksPerModule, ...r, phases, goal_materials: mats({}) },
       label: `Read the roadmap for ${g.title}`,
     };
   },
@@ -504,8 +511,8 @@ tool({
 tool({
   name: "update_phase",
   kind: "write",
-  description: "Change a phase's title, objective, checkpoint, level or key concepts. Tasks are changed with the task tools.",
-  params: { goal_id: GOAL_ID, phase_id: S("Phase id or number."), title: S("New title."), objective: S("New objective."), checkpoint: S("New checkpoint."), level: S("New level."), key_concepts: { type: "array", items: { type: "string" }, description: "New key concepts." } },
+  description: "Change or elaborate a phase: title, objective, checkpoint, level, key concepts, details (a longer explanation of what the phase covers and how), approach (how to tackle it) and built_on (the idea it rests on). Tasks are changed with the task tools.",
+  params: { goal_id: GOAL_ID, phase_id: S("Phase id or number."), title: S("New title."), objective: S("New objective."), checkpoint: S("New checkpoint."), level: S("New level."), key_concepts: { type: "array", items: { type: "string" }, description: "New key concepts." }, details: S("Longer explanation of the phase (replaces the old one)."), approach: S("How to tackle this phase."), built_on: S("The first principle or idea this phase rests on.") },
   required: ["goal_id", "phase_id"],
   run: (a, ctx) => {
     const g = findGoal(ctx.state, a.req("goal_id"));
@@ -516,6 +523,9 @@ tool({
       ...(a.has("checkpoint") ? { checkpoint: a.str("checkpoint", { max: 400 }) as string } : {}),
       ...(a.has("level") ? { level: a.str("level", { max: 80 }) as string } : {}),
       ...(a.has("key_concepts") ? { key_concepts: (a.list<string>("key_concepts", { max: 12 }) ?? []).map(String) } : {}),
+      ...(a.has("details") ? { notes: a.str("details", { max: 4000 }) as string } : {}),
+      ...(a.has("approach") ? { zpd_scaffold: a.str("approach", { max: 600 }) as string } : {}),
+      ...(a.has("built_on") ? { first_principle: a.str("built_on", { max: 300 }) as string } : {}),
     };
     if (!Object.keys(patch).length) throw new ToolInputError("Nothing to change: give at least one field.");
     return { ops: [{ type: "update_phase", goalId: g.id, phaseId: m.id, patch }], summary: `Change ${Object.keys(patch).join(", ").replace("key_concepts", "key concepts")} of phase "${m.title}".`, result: { updated: true }, label: `Updated phase ${m.title}` };
@@ -1141,6 +1151,137 @@ tool({
     const m = ctx.state.memories.find((x) => x.id === id);
     if (!m) throw new ToolInputError(`No memory with id "${id}". Use list_memories.`);
     return { ops: [{ type: "delete_memory", id }], summary: `Forget: ${m.text}`, result: { deleted: true }, label: `Forgot: ${m.text}` };
+  },
+});
+
+// ======== materials
+
+const MATERIAL_KINDS: MaterialKind[] = ["notion", "drive", "folder", "doc", "sheet", "slides", "pdf", "video", "repo", "local", "link"];
+
+function findMaterial(g: Goal, ref: string) {
+  const m = (g.materials ?? []).find((x) => x.id === ref) ?? (g.materials ?? []).find((x) => x.title.toLowerCase() === ref.toLowerCase());
+  if (!m) throw new ToolInputError(`"${g.title}" has no material "${ref}". Use list_materials.`);
+  return m;
+}
+
+/** Where a material goes: a phase and/or task reference, checked against the roadmap. */
+function placeFrom(a: Args, g: Goal): Pick<Material, "phaseId" | "taskId"> {
+  if (a.has("task_id")) {
+    const w = findTask(g, a.str("task_id"));
+    return { taskId: w.task.id, phaseId: w.module.id };
+  }
+  if (a.has("phase")) return { phaseId: findPhase(g, a.str("phase")).m.id };
+  return {};
+}
+
+tool({
+  name: "list_materials",
+  kind: "read",
+  description:
+    "Materials linked to a goal: Notion pages, Google Drive folders and files, docs, sheets, PDFs, videos, code repos, and paths to files on the person's computer, each with what it is for (the goal, a phase or a task). Open web links with your own tools (a Notion or Google Drive connector, or web fetch). Local paths are files on the person's PC: use a file-system tool if you have one, otherwise name the file so they can open it.",
+  params: { goal_id: GOAL_ID, phase: S("Only this phase (id or number) and its tasks."), task_id: S("Only this task.") },
+  required: ["goal_id"],
+  run: (a, ctx) => {
+    const g = findGoal(ctx.state, a.req("goal_id"));
+    const where = a.has("task_id") ? { taskId: findTask(g, a.str("task_id")).task.id } : a.has("phase") ? { phaseId: findPhase(g, a.str("phase")).m.id } : {};
+    const list = materialsFor(g, where);
+    return {
+      result: list.length ? list.map((m) => ({ id: m.id, title: m.title, url: m.url, kind: MATERIAL_LABEL[m.kind], for: placeOf(g, m), added: m.addedAt.slice(0, 10), ...(m.note ? { note: m.note } : {}) })) : { note: "No materials linked here yet. add_material links one." },
+      label: `Listed ${list.length} material${list.length === 1 ? "" : "s"} for ${g.title}`,
+    };
+  },
+});
+
+tool({
+  name: "add_material",
+  kind: "write",
+  description:
+    "Link a material to a goal, or to one of its phases or tasks: a Notion page, a Google Drive file or folder, a doc, a PDF, a video, a repo, any web page, or a path to a file on the person's computer. Only the link is stored; the type and a title are worked out from it if not given.",
+  params: { goal_id: GOAL_ID, url: S("The link (https://…) or a file path (C:/Notes/x.pdf, /Users/me/x.md)."), title: S("Name to show; defaults to one taken from the link."), phase: S("Attach to this phase (id or number)."), task_id: S("Attach to this task."), kind: E("Type; detected from the link if left out.", MATERIAL_KINDS), note: S("What it is for.") },
+  required: ["goal_id", "url"],
+  run: (a, ctx) => {
+    const g = findGoal(ctx.state, a.req("goal_id"));
+    const url = a.req("url", 2000);
+    const bad = checkMaterialUrl(url);
+    if (bad) throw new ToolInputError(bad);
+    const material: Material = { id: uid() + uid(), url, title: a.str("title", { max: 200 }) ?? titleFromUrl(url), kind: a.oneOf("kind", MATERIAL_KINDS) ?? detectKind(url), note: a.str("note", { max: 500 }), addedAt: ctx.now, ...placeFrom(a, g) };
+    return { ops: [{ type: "add_material", goalId: g.id, material }], summary: `Link ${MATERIAL_LABEL[material.kind]} "${material.title}" to ${placeOf(g, material)} of "${g.title}".`, result: { material_id: material.id }, label: `Linked "${material.title}" to ${g.title}` };
+  },
+});
+
+tool({
+  name: "update_material",
+  kind: "write",
+  description: "Change a material's title, link, note or where it is attached (goal, phase or task).",
+  params: { goal_id: GOAL_ID, material_id: S("Material id or title."), title: S("New title."), url: S("New link or path."), note: S("New note."), phase: S("Move it to this phase."), task_id: S("Move it to this task."), whole_goal: B("Detach it from its phase or task.") },
+  required: ["goal_id", "material_id"],
+  run: (a, ctx) => {
+    const g = findGoal(ctx.state, a.req("goal_id"));
+    const m = findMaterial(g, a.req("material_id"));
+    if (a.has("url")) {
+      const bad = checkMaterialUrl(a.req("url"));
+      if (bad) throw new ToolInputError(bad);
+    }
+    const place = a.bool("whole_goal") ? { phaseId: undefined, taskId: undefined } : a.has("phase") || a.has("task_id") ? { taskId: undefined, ...placeFrom(a, g) } : {};
+    const patch = { ...(a.has("title") ? { title: a.req("title", 200) } : {}), ...(a.has("url") ? { url: a.req("url", 2000) } : {}), ...(a.has("note") ? { note: a.str("note", { max: 500 }) } : {}), ...place };
+    if (!Object.keys(patch).length) throw new ToolInputError("Nothing to change: give at least one field.");
+    return { ops: [{ type: "update_material", goalId: g.id, materialId: m.id, patch }], summary: `Change material "${m.title}".`, result: { updated: true }, label: `Updated material ${m.title}` };
+  },
+});
+
+tool({
+  name: "remove_material",
+  kind: "destructive",
+  description: "Unlink a material from a goal. Only the link is removed; the file or page itself is untouched.",
+  params: { goal_id: GOAL_ID, material_id: S("Material id or title.") },
+  required: ["goal_id", "material_id"],
+  run: (a, ctx) => {
+    const g = findGoal(ctx.state, a.req("goal_id"));
+    const m = findMaterial(g, a.req("material_id"));
+    return { ops: [{ type: "remove_material", goalId: g.id, materialId: m.id }], summary: `Unlink "${m.title}" from "${g.title}".`, result: { removed: true }, label: `Unlinked ${m.title}` };
+  },
+});
+
+// ======== history and memory
+
+tool({
+  name: "get_goal_history",
+  kind: "read",
+  description:
+    "The story of one goal since it was created: a dated timeline of every change (created, roadmap written or replaced, phases and tasks added or removed, materials added, schedule changes, pauses), plus the quality of the work: sessions done on time, delays, missed and skipped sessions, how often notes were written, tasks done, extra study, and minutes per week since the start.",
+  params: { goal_id: GOAL_ID },
+  required: ["goal_id"],
+  run: (a, ctx) => {
+    const g = findGoal(ctx.state, a.req("goal_id"));
+    const q = workQuality(g, ctx.t);
+    const events = g.history ?? [];
+    const firstRoadmap = events.find((e) => e.kind === "roadmap_written" || (e.kind === "goal_created" && /with a roadmap/.test(e.text)));
+    return {
+      result: {
+        goal: g.title,
+        created: g.createdAt,
+        roadmap_first_written: firstRoadmap ? firstRoadmap.at.slice(0, 10) : g.roadmap.modules.length ? `${g.createdAt} (with the goal)` : "no roadmap yet",
+        materials_linked: (g.materials ?? []).length,
+        materials_added: (g.materials ?? []).map((m) => `${m.addedAt.slice(0, 10)} ${m.title}`),
+        quality: { sessions_done: `${q.sessionsDone} of ${q.sessionsDue} due (${q.completionRate}%)`, done_on_planned_day: `${q.onTimeRate}%`, average_delay_days: q.averageDelayDays, missed: q.missed, skipped: q.skipped, sessions_with_notes: `${q.notesRate}%`, tasks_done: `${q.tasksDone} of ${q.tasksTotal}`, extra_study: fmtDuration(q.extraMinutes) },
+        minutes_per_week_since_start: q.weeks,
+        timeline: [...(events[0]?.kind === "goal_created" ? [] : [{ at: g.createdAt, text: "Goal created." }]), ...events.map((e) => ({ at: e.at.slice(0, 16).replace("T", " "), text: e.text }))],
+      },
+      label: `Read the history of ${g.title}`,
+    };
+  },
+});
+
+tool({
+  name: "get_memory_file",
+  kind: "read",
+  description:
+    "Everything about one goal (or all goals) as one Markdown document another model can read and carry on from: the person and their constraints, the goal, where it stands, quality of work, the roadmap with done and remaining tasks and notes, materials, the daily log since creation, the change history, KPIs and the raw data as JSON.",
+  params: { goal_id: S("One goal; leave out for all goals."), include_json: B("Add the raw data as JSON at the end (default true).") },
+  run: (a, ctx) => {
+    const goalId = a.has("goal_id") ? findGoal(ctx.state, a.str("goal_id")).id : undefined;
+    const text = buildMemoryFile(ctx.state, ctx.t, { goalId, generatedAt: ctx.now.slice(0, 16), includeJson: a.bool("include_json") ?? true });
+    return { result: text, label: `Wrote the memory file${goalId ? "" : " for all goals"}` };
   },
 });
 

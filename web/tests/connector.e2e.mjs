@@ -44,7 +44,8 @@ const confirmCall = async (name, args = {}) => {
 try {
   await api("/api/test-login", { method: "POST", body: JSON.stringify({ email, password }) });
   await api("/api/state", { method: "POST", body: JSON.stringify({ mode: "demo", timezone: "Asia/Kolkata" }) });
-  const url = (await api("/api/connector", { method: "POST" })).body.url;
+  // The URL names the deployed site; the test talks to this local server with the same secret path
+  const url = APP + new URL((await api("/api/connector", { method: "POST" })).body.url).pathname;
   client = new Client({ name: "claude-standin", version: "0" });
   await client.connect(new StreamableHTTPClientTransport(new URL(url)));
 
@@ -147,6 +148,16 @@ try {
   const again = await call("add_task", rq);
   s = await state();
   ok("the same request_id is applied once", /Already applied/.test(again.text) && s.goals.find((x) => x.id === g.id).roadmap.modules[0].tasks.filter((t) => t.title === "Idempotent task").length === 1, again.text);
+
+  // 12. Materials, goal history and the memory file, as Claude would use them
+  const mat = await call("add_material", { goal_id: g.id, url: "https://www.notion.so/Rust-Ownership-Notes-1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d", phase: 1 });
+  await call("add_material", { goal_id: g.id, url: "D:/Learning/rust/borrowing.pdf", note: "my annotated notes" });
+  const mats = JSON.parse((await call("list_materials", { goal_id: g.id })).text);
+  ok("Claude links and sees materials (Notion page, local PDF)", /Done\./.test(mat.text) && mats.length === 2 && mats.some((m) => m.kind === "Notion" && m.title === "Rust Ownership Notes") && mats.some((m) => m.url === "D:/Learning/rust/borrowing.pdf"), mats);
+  const story = JSON.parse((await call("get_goal_history", { goal_id: g.id })).text);
+  ok("goal history shows creation, roadmap, changes and materials", story.timeline.some((e) => /Goal created/.test(e.text)) && story.timeline.some((e) => /Roadmap written/.test(e.text)) && story.timeline.some((e) => /Material added/.test(e.text)) && story.materials_linked === 2 && story.quality.sessions_done, story.timeline);
+  const mem = (await call("get_memory_file", { goal_id: g.id })).text;
+  ok("memory file has roadmap, daily log, history and materials", /## Goal: Learn Rust/.test(mem) && /### Daily log since the start/.test(mem) && /Rust Ownership Notes/.test(mem) && /Borrow checker finally clicked/.test(mem) && /```json/.test(mem), mem.slice(0, 300));
 
   const ov = (await call("get_overview")).text;
   ok("overview shows KPIs, limits and settings", /KPIS/.test(ov) && /Rustlings solved/.test(ov) && /APP LIMITS/.test(ov) && /may make ordinary changes without asking/.test(ov), ov.slice(0, 400));
