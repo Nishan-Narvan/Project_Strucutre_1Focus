@@ -7,6 +7,7 @@ import { OpError } from "@/lib/ops";
 import { lastAudit, loadState, NotConfigured, userForConnector, validToken } from "@/lib/server/supabase";
 import { applyForUser, todayIn, undoLast } from "@/lib/server/state";
 import { loadSecrets } from "@/lib/server/secrets";
+import { CalendarError, readEvents } from "@/lib/server/calendar";
 import { NotionError, notionMarkdown, readNotionCached } from "@/lib/server/notion";
 
 export const runtime = "nodejs";
@@ -130,6 +131,23 @@ function buildServer(userId: string) {
           return text(`${body}\n\n--- Content from Notion ---\n${md.slice(0, 40000)}${md.length > 40000 ? "\n(cut: the page is longer)" : ""}`);
         } catch (e) {
           return text(`${body}\n\nCould not read it from Notion: ${e instanceof NotionError ? e.message : "unknown error"}`, true);
+        }
+      }
+      if (out.fetchCalendar) {
+        const url = (await loadSecrets(userId)).calendar;
+        if (!url) return text(`${body}
+
+No calendar is connected in Where MyLife (Settings → Calendar). Use your own calendar connector if you have one.`);
+        try {
+          const events = await readEvents(userId, url, out.fetchCalendar.from, out.fetchCalendar.to, row.state.settings?.timezone ?? "UTC");
+          return text(`${body}
+
+--- Calendar events (${events.length}) ---
+${JSON.stringify(events, null, 1).slice(0, 40000)}`);
+        } catch (e) {
+          return text(`${body}
+
+Could not read the calendar: ${e instanceof CalendarError ? e.message : "unknown error"}`, true);
         }
       }
       if (!out.ops?.length) return text(body);

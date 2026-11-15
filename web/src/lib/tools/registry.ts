@@ -48,6 +48,8 @@ export interface ToolOutput {
   destructive?: boolean;
   /** A Notion link whose content the host should read and add to the result (needs network). */
   fetchNotion?: string;
+  /** Dates of the person's connected calendar the host should read and add to the result (needs network). */
+  fetchCalendar?: { from: string; to: string };
 }
 
 type Schema = Record<string, unknown>;
@@ -315,6 +317,23 @@ tool({
       })),
       label: `Checked the next ${days} days`,
     };
+  },
+});
+
+tool({
+  name: "get_calendar_events",
+  kind: "read",
+  description:
+    "Events from the person's own calendar (Google Calendar or any calendar they connected in Where MyLife), in their time zone: title, date, start, end, all-day, location. Read-only. Use it to see when they are busy before planning study time or suggesting a schedule.",
+  params: { from: DATE_P("First day. Default today"), to: DATE_P("Last day, at most 62 days after the first. Default 7 days from the first") },
+  run: (a, ctx) => {
+    const from = a.date("from") ?? ctx.t;
+    const to = a.date("to") ?? addDays(from, 6);
+    if (to < from) throw new ToolInputError("to must be on or after from.");
+    if (to > addDays(from, 62)) throw new ToolInputError("Ask for at most 62 days at a time.");
+    if (!ctx.state.settings.calendar)
+      return { result: { note: "No calendar is connected. The person can connect one in Where MyLife: Settings → Calendar (Google Calendar's secret address in iCal format)." }, label: "No calendar connected" };
+    return { result: { calendar: ctx.state.settings.calendar.name, from, to }, fetchCalendar: { from, to }, label: `Read the calendar, ${from} to ${to}` };
   },
 });
 

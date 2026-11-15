@@ -17,6 +17,8 @@ export interface Secrets {
   connector?: string;
   /** Notion integration secret, for showing Notion pages and letting assistants read them */
   notion?: string;
+  /** Secret calendar feed address (Google Calendar's "secret address in iCal format", or any .ics link) */
+  calendar?: string;
 }
 
 function key() {

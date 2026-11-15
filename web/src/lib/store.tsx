@@ -74,6 +74,8 @@ interface Store extends Actions {
   setup: (mode: "import" | "demo" | "empty") => Promise<void>;
   /** Data saved in this browser before accounts, if any. */
   legacy: AppState | null;
+  /** Fetch the server's newest copy now, after something changed it outside this page's actions. */
+  refresh: () => Promise<void>;
 }
 
 interface Pending {
@@ -367,6 +369,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dismissNotice: () => setNotice(null),
       saving,
       legacy,
+      refresh: () => load(confirmed.current.version),
       undo: async () => {
         await flush();
         const res = await fetch("/api/ops", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ undo: true }) });
@@ -393,7 +396,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setStatus("ready");
       },
     };
-  }, [view, status, user, notice, saving, legacy, attempt, dispatch, flush, accept]);
+  }, [view, status, user, notice, saving, legacy, attempt, dispatch, flush, accept, load]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

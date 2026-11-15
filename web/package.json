@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "ical.js": "^2.1.0",
     "mermaid": "^10.9.1",
     "next": "^15.5.28",
     "react": "^19.1.10",

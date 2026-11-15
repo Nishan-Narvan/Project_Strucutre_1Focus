@@ -48,7 +48,7 @@ The URL holds a secret; treat it like a password. "Make a new URL" in Settings r
 ## Tools
 
 <!-- tools:start -->
-63 tools. Inputs marked * are required. Change tools also accept `confirm_token` (second call, after the person agrees) and `request_id` (safe retries).
+64 tools. Inputs marked * are required. Change tools also accept `confirm_token` (second call, after the person agrees) and `request_id` (safe retries).
 
 | Tool | Kind | What it does | Inputs | Example |
 |---|---|---|---|---|
@@ -57,6 +57,7 @@ The URL holds a secret; treat it like a password. "Make a new URL" in Settings r
 | `get_goal_roadmap` | read | One goal's roadmap in the same shape set_roadmap accepts: phases (id, title, objective, checkpoint, level, key concepts, resources) and tasks (id, title, minutes, kind, detail), plus for each task whether it is done and when the rest is scheduled. | `goal_id`* | `{"goal_id":"Crack DSA for coding interviews"}` |
 | `get_history` | read | Day-by-day record of the past: sessions (with ids) planned and done per goal, skipped sessions with the reason, extra study logged, and the notes written on completion. | `days`, `goal_id` | `{"days":7,"goal_id":"Crack DSA for coding interviews"}` |
 | `get_upcoming` | read | The plan ahead, day by day: each session with its id, goal, task, start and end time and whether it is done, plus free and committed time. | `days` | `{"days":7}` |
+| `get_calendar_events` | read | Events from the person's own calendar (Google Calendar or any calendar they connected in Where MyLife), in their time zone: title, date, start, end, all-day, location. | `from`, `to` | `{"from":"2026-11-16","to":"2026-11-22"}` |
 | `get_capacity` | read | Free versus planned time for a date range: per day, time outside routines and events, study already planned, headroom under the daily limit, and a realistic figure scaled by the person's recent completion rate. | `from`, `to` | `{"from":"2026-11-16","to":"2026-11-22"}` |
 | `recall` | read | Search everything from the past: saved memories, earlier conversations with the person, and every note they wrote when finishing a session. | `query`* | `{"query":"recursion struggles"}` |
 | `create_goal` | change | Create a new learning goal. | `title`*, `outcome`, `current_level`, `target_level`, `prior_knowledge`, `learning_preferences`, `daily_minutes`*, `study_days`*, `start_time`, `start_date`, `deadline`*, `roadmap` | `{"title":"Learn Rust","daily_minutes":45,"study_days":["mon","wed","fri"],"deadline":"2027-01-31"}` |

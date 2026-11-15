@@ -6,6 +6,7 @@ import { useStore } from "@/lib/store";
 import { layoutDay, type StudyBlock } from "@/lib/schedule";
 import { hhmm, today } from "@/lib/date";
 import { CompleteButton } from "./ui";
+import type { DayEvent } from "@/lib/types";
 
 const PX = 1.1; // pixels per minute
 
@@ -31,8 +32,10 @@ export function nextBlock(study: StudyBlock[], date: string, now: number) {
 }
 
 /** Vertical 24h timeline: routines as quiet fills, events dashed, study sessions placed in free time. */
-export function Timeline({ date, className = "h-[68vh]" }: { date: string; className?: string }) {
-  const { state, completeSession, reopenSession } = useStore();
+export function Timeline({ date, className = "h-[68vh]", extra }: { date: string; className?: string; extra?: DayEvent[] }) {
+  const { state: saved, completeSession, reopenSession } = useStore();
+  // Events from a connected calendar take time like one-off events, without being saved
+  const state = extra?.length ? { ...saved, events: [...saved.events, ...extra] } : saved;
   const { fixed, study } = layoutDay(state, date);
   const now = useNowMinutes();
   const isToday = date === today();

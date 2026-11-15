@@ -130,6 +130,11 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
       const data = res ? await res.json().catch(() => ({})) : {};
       return { kind: "done", result: res?.ok ? { material: out.result, content: String(data.markdown ?? "").slice(0, 30000) } : { material: out.result, error: data.error ?? "Could not read it from Notion." }, label: out.label };
     }
+    if (out.fetchCalendar) {
+      const res = await fetch(`/api/calendar?from=${out.fetchCalendar.from}&to=${out.fetchCalendar.to}`).catch(() => null);
+      const data = res ? await res.json().catch(() => ({})) : {};
+      return { kind: "done", result: res?.ok ? { ...(out.result as object), events: data.events } : { ...(out.result as object), error: data.error ?? "Could not read the calendar." }, label: out.label };
+    }
     if (out.error || !out.ops?.length) return { kind: "done", result: out.result, label: out.label };
     // Never ask the person to approve a change the rules would refuse
     const refusal = dryRun(ctx.state, out.ops, ctx.t);

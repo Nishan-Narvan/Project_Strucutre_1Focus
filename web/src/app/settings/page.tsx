@@ -8,6 +8,7 @@ import { ClaudeConnector } from "@/components/ClaudeConnector";
 import { AppearanceSettings } from "@/components/Appearance";
 import { MemoryFileButtons } from "@/components/Editors";
 import { NotionSettings } from "@/components/NotionView";
+import { CalendarSettings } from "@/components/CalendarView";
 
 export default function SettingsPage() {
 
@@ -22,6 +23,7 @@ export default function SettingsPage() {
             <ModelForm />
           </section>
           <NotionSettings />
+          <CalendarSettings />
           <ClaudeConnector />
           <section className="card space-y-3" aria-label="Memory file">
             <h2 className="text-base font-medium">Memory file</h2>

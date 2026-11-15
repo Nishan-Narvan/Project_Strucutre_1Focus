@@ -232,6 +232,8 @@ export interface Settings {
   weekStart?: "mon" | "sun";
   /** Default length for new tasks, in minutes. */
   defaultTaskMinutes?: number;
+  /** A calendar feed is connected (its secret address is kept encrypted on the server). */
+  calendar?: { name: string };
   /** Which sections the Goals page shows, in order. */
   dashboard?: DashboardWidget[];
 }

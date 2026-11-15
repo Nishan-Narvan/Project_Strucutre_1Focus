@@ -8,6 +8,7 @@ import { layoutDay, progress, streak } from "@/lib/schedule";
 import { Timeline, nextBlock, useNowMinutes } from "@/components/Timeline";
 import { CompleteButton } from "@/components/ui";
 import { EventItem, SessionControls } from "@/components/Editors";
+import { asDayEvents, useCalendarEvents, withCalendar } from "@/components/CalendarView";
 import { isActive } from "@/lib/rules";
 import type { AppState } from "@/lib/types";
 
@@ -17,9 +18,13 @@ const dayLeft = (state: AppState, date: string) =>
   state.goals.reduce((a, g) => a + g.sessions.filter((s) => s.date === date && !s.done).reduce((x, s) => x + s.minutes, 0), 0);
 
 export function DayView({ initialDate }: { initialDate: string }) {
-  const { state, completeSession, reopenSession, addEvent } = useStore();
+  const { state: saved, completeSession, reopenSession, addEvent } = useStore();
   const t = today();
   const [date, setDate] = useState(initialDate);
+  const cal = useCalendarEvents(date, date);
+  // The day is planned around calendar events too; they are shown, never saved
+  const state = withCalendar(saved, cal.events);
+  const allDay = cal.events.filter((e) => e.allDay);
   const [ev, setEv] = useState({ title: "", start: "12:00", end: "13:00" });
   const now = useNowMinutes();
   const { study } = layoutDay(state, date);
@@ -78,7 +83,13 @@ export function DayView({ initialDate }: { initialDate: string }) {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <section aria-label="Timeline">
-          <Timeline date={date} />
+          {(allDay.length > 0 || cal.error) && (
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+              {allDay.map((e, i) => <span key={i} className="chip" title="All day, from your calendar">{e.title}</span>)}
+              {cal.error && <span className="text-xs text-bad">{cal.error}</span>}
+            </div>
+          )}
+          <Timeline date={date} extra={asDayEvents(cal.events)} />
           <div className="mt-2 flex justify-between text-xs text-muted">
             <span>Study blocks fill the free time around your routines.</span>
             <span className="flex gap-3">
@@ -169,7 +180,7 @@ export function DayView({ initialDate }: { initialDate: string }) {
           <section className="card">
             <h2 className="mb-3 text-base font-medium">One-off events</h2>
             <ul className="mb-3 space-y-1.5">
-              {state.events.filter((e) => e.date === date).map((e) => <EventItem key={`${e.id}-${e.title}-${e.date}-${e.start}-${e.end}`} event={e} />)}
+              {saved.events.filter((e) => e.date === date).map((e) => <EventItem key={`${e.id}-${e.title}-${e.date}-${e.start}-${e.end}`} event={e} />)}
             </ul>
             <form
               className="space-y-2"
