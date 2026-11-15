@@ -34,11 +34,12 @@
 :root {
   /* glass: 0 = solid, 1 = most see-through (set from Appearance) */
   --g: 0;
-  --a1: calc(100% - var(--g) * 62%);
-  --a2: calc(100% - var(--g) * 46%);
-  --a3: calc(100% - var(--g) * 28%);
-  --glass-blur: calc(var(--g) * 28px);
-  --wall-blur: calc(var(--g) * 10px);
+  /* At full glass the panels are mostly clear and lightly frosted, so the wallpaper itself shows */
+  --a1: calc(100% - var(--g) * 82%);
+  --a2: calc(100% - var(--g) * 66%);
+  --a3: calc(100% - var(--g) * 45%);
+  --glass-blur: calc(var(--g) * 14px);
+  --wall-blur: calc(var(--g) * 2px);
 
   /* Dark, the default */
   color-scheme: dark;

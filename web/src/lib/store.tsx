@@ -94,6 +94,26 @@ const browserTimezone = () => {
   }
 };
 
+/**
+ * The last copy the server confirmed, kept on this device so a reload shows the app at once while
+ * the server is asked for anything newer. Cleared on sign-out; the server stays the source of truth.
+ */
+export const CACHE_KEY = "wml.cache.v1";
+interface Cached { user: { id: string; email: string }; state: AppState; version: number }
+function readCache(): Cached | null {
+  try {
+    const c = JSON.parse(localStorage.getItem(CACHE_KEY) ?? "null") as Cached | null;
+    return c?.user?.id && c.state && Array.isArray(c.state.goals) && typeof c.version === "number" ? c : null;
+  } catch {
+    return null;
+  }
+}
+export function clearCache() {
+  try {
+    localStorage.removeItem(CACHE_KEY);
+  } catch {}
+}
+
 function readLegacy(): AppState | null {
   try {
     const raw = localStorage.getItem(LEGACY_KEY);
@@ -118,6 +138,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const pending = useRef<Pending[]>([]);
   const local = useRef<AppState>(view);
   const sending = useRef(false);
+  const who = useRef<Store["user"]>(null);
+  who.current = user;
 
   const recompute = useCallback(() => {
     let s = confirmed.current.state;
@@ -141,6 +163,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (data.version < confirmed.current.version) return;
       confirmed.current = { state: data.state, version: data.version };
       recompute();
+      if (who.current)
+        try {
+          localStorage.setItem(CACHE_KEY, JSON.stringify({ user: who.current, state: data.state, version: data.version }));
+        } catch {
+          // Full or blocked storage: the app still works, a reload just waits for the server
+        }
     },
     [recompute],
   );
@@ -165,6 +193,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         const data = await res.json().catch(() => ({}));
         if (res.status === 401) {
+          clearCache();
           setStatus("signedOut");
           return;
         }
@@ -227,7 +256,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return;
       }
       const data = await res.json().catch(() => ({}));
-      if (res.status === 401) return setStatus("signedOut");
+      if (res.status === 401) {
+        clearCache();
+        return setStatus("signedOut");
+      }
       if (res.status === 503 && data.configured === false) return setStatus("unconfigured");
       if (!res.ok) {
         if (!since) {
@@ -236,7 +268,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         return;
       }
-      if (data.user) setUser(data.user);
+      if (data.user) {
+        // Another account signed in on this device: never show the previous person's copy
+        if (who.current && who.current.id !== data.user.id) {
+          clearCache();
+          window.location.reload();
+          return;
+        }
+        who.current = data.user;
+        setUser(data.user);
+      }
       if (data.needsSetup) {
         setLegacy(readLegacy());
         return setStatus("setup");
@@ -248,9 +289,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [accept],
   );
 
+  // Show the cached copy at once, then ask only for what changed since it
   useEffect(() => {
-    void load();
-  }, [load]);
+    const c = readCache();
+    if (c) {
+      who.current = c.user;
+      setUser(c.user);
+      confirmed.current = { state: c.state, version: c.version };
+      recompute();
+      setStatus("ready");
+    }
+    void load(c?.version);
+  }, [load, recompute]);
 
   // Pick up changes made elsewhere: every few seconds while visible, and on returning to the tab
   useEffect(() => {

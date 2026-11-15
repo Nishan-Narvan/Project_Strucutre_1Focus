@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 /**
  * The signed-in user's data.
  *   GET                       -> { state, version, user } | { needsSetup: true, user } | 401
- *   GET ?since=<version>      -> { unchanged: true } when nothing changed (cheap polling)
+ *   GET ?since=<version>      -> { unchanged: true, user } when nothing changed (cheap polling)
  *   POST { mode, state? }     -> create the account's data once: "import" (from this browser), "demo" or "empty"
  */
 
@@ -22,7 +22,7 @@ export async function GET(req: Request) {
     const row = await loadState(user.id);
     if (!row) return NextResponse.json({ needsSetup: true, user });
     const since = Number(new URL(req.url).searchParams.get("since"));
-    if (since && since === row.version) return NextResponse.json({ unchanged: true, version: row.version });
+    if (since && since === row.version) return NextResponse.json({ unchanged: true, version: row.version, user });
     return NextResponse.json({ state: row.state, version: row.version, user });
   });
 }

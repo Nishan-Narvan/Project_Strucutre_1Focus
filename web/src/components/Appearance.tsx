@@ -213,15 +213,37 @@ const SunMoon = ({ dark }: { dark: boolean }) => (
   </svg>
 );
 
-/** In the side panel, on every page: the glass slider and a dark/light switch. */
+/** Keep an image as the wallpaper on this device; adds some glass so it shows through the panels. */
+async function applyImageFile(file: File, a: Appearance, update: (p: Partial<Appearance>) => void) {
+  if (!file.type.startsWith("image/")) throw new Error("That is not an image.");
+  await setDeviceImage(await shrink(file));
+  bumpImage();
+  update({ background: "device", ...(glassOf(a) < 40 ? { glassLevel: 60 } : {}) });
+}
+
+const ImageIcon = () => (
+  <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <rect x="2.5" y="3.5" width="15" height="13" rx="2" />
+    <circle cx="7" cy="8" r="1.5" />
+    <path d="m17.5 13-4-4-8 7.5" />
+  </svg>
+);
+
+/** In the side panel, on every page: the glass slider, a wallpaper picker and a dark/light switch. */
 export function QuickLook() {
   const { a, update } = useLookEditor();
   const systemDark = useSystemDark();
   const dark = (a.theme === "system" ? (systemDark ? "dark" : "light") : a.theme) === "dark";
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center">
         <span className="text-xs text-muted">{dark ? "Dark" : "Light"}</span>
+        <span className="ml-auto" />
+        <label className="btn btn-quiet btn-sm btn-icon cursor-pointer" title={a.background === "none" ? "Choose a wallpaper" : "Change the wallpaper"}>
+          <ImageIcon />
+          <span className="sr-only">{a.background === "none" ? "Choose a wallpaper" : "Change the wallpaper"}</span>
+          <input type="file" accept="image/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void applyImageFile(f, a, update).catch(() => {}); }} />
+        </label>
         <button type="button" className="btn btn-quiet btn-sm btn-icon" onClick={() => update({ theme: dark ? "light" : "dark" })} aria-label={dark ? "Switch to light mode" : "Switch to dark mode"} title={dark ? "Switch to light mode" : "Switch to dark mode"}>
           <SunMoon dark={dark} />
         </button>
@@ -239,12 +261,8 @@ export function AppearanceSettings() {
 
   async function upload(file: File | undefined) {
     if (!file) return;
-    if (!file.type.startsWith("image/")) return setMsg({ text: "That is not an image.", bad: true });
     try {
-      await setDeviceImage(await shrink(file));
-      bumpImage();
-      // A wallpaper only shows through see-through panels: add some glass the first time
-      update({ background: "device", ...(glassOf(a) === 0 ? { glassLevel: 45 } : {}) });
+      await applyImageFile(file, a, update);
       setMsg({ text: "Wallpaper set. It is kept on this device only." });
     } catch (e) {
       setMsg({ text: e instanceof Error ? e.message : "Could not use that image.", bad: true });
@@ -254,7 +272,7 @@ export function AppearanceSettings() {
   function useLink() {
     const u = url.trim();
     if (!/^https:\/\/\S+$/i.test(u)) return setMsg({ text: "Paste an https:// link to an image.", bad: true });
-    update({ background: "url", backgroundUrl: u, ...(glassOf(a) === 0 ? { glassLevel: 45 } : {}) });
+    update({ background: "url", backgroundUrl: u, ...(glassOf(a) < 40 ? { glassLevel: 60 } : {}) });
     setMsg({ text: "Wallpaper set from the link. It shows on all your devices." });
   }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useStore } from "@/lib/store";
+import { clearCache, useStore } from "@/lib/store";
 import { Logo } from "@/components/Shell";
 
 /** Shown instead of the app until the person is signed in and their data is set up. */
@@ -132,7 +132,7 @@ export function AccountBox() {
       >
         Undo
       </button>
-      <form action="/auth/logout" method="post">
+      <form action="/auth/logout" method="post" onSubmit={clearCache}>
         <button className="btn btn-quiet btn-sm">Sign out</button>
       </form>
       </div>
