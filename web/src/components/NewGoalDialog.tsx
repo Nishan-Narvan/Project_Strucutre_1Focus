@@ -10,6 +10,7 @@ import { committedHours, isActive, limitsOf } from "@/lib/rules";
 import { agentReady } from "@/lib/providers";
 import { emptyRoadmap } from "@/lib/roadmap";
 import { askAssistant } from "@/components/Editors";
+import { OnTop } from "@/components/ui";
 import type { Goal } from "@/lib/types";
 
 const TINTS = ["#f5f5f5", "#b8b8b8", "#8a8a8a", "#d4d4d4"];
@@ -63,6 +64,7 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
   ];
   const valid = problems.length === 0 && !atLimit;
   const [tried, setTried] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   function create() {
     const title = f.title.trim();
@@ -100,8 +102,9 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
+    <OnTop>
     <div className="fixed inset-0 z-50 grid place-items-center bg-scrim p-3 md:p-6" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby="new-goal-title" className="glass flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[16px] md:max-h-[calc(100dvh-3rem)] border border-line bg-bg shadow-2xl shadow-black" onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="new-goal-title" className="glass flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[16px] md:max-h-[calc(100dvh-3rem)] border border-line bg-bg shadow-2xl shadow-black/30" onClick={(e) => e.stopPropagation()}>
         <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 md:px-7 md:py-5">
           <div>
             <h2 id="new-goal-title" className="font-serif text-3xl leading-none tracking-tight">{atLimit ? `You already have ${L.maxActiveGoals} active goals` : "Start a new goal"}</h2>
@@ -133,34 +136,10 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
               <label className="label" htmlFor="ng-out">Why, and what does done look like?</label>
               <input id="ng-out" className="input" value={f.outcome} onChange={(e) => set("outcome", e.target.value)} placeholder="Pass coding rounds at product companies" />
             </div>
-            <div>
-              <label className="label" htmlFor="ng-cur">Starting from</label>
-              <input id="ng-cur" className="input" value={f.currentLevel} onChange={(e) => set("currentLevel", e.target.value)} />
-            </div>
-            <div>
-              <label className="label" htmlFor="ng-tgt">Aiming for</label>
-              <input id="ng-tgt" className="input" value={f.targetLevel} onChange={(e) => set("targetLevel", e.target.value)} />
-            </div>
-            <div>
-              <label className="label" htmlFor="ng-known">Already know</label>
-              <textarea id="ng-known" rows={2} className="input resize-none" value={f.known} onChange={(e) => set("known", e.target.value)} placeholder="Python basics, ~20 easy problems" />
-            </div>
-            <div>
-              <label className="label" htmlFor="ng-prefs">How you like to learn</label>
-              <textarea id="ng-prefs" rows={2} className="input resize-none" value={f.prefs} onChange={(e) => set("prefs", e.target.value)} placeholder="Short videos, then lots of practice" />
-            </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:col-span-2">
+            <div className="grid grid-cols-2 gap-3 md:col-span-2">
               <div>
                 <label className="label" htmlFor="ng-min">Minutes a day</label>
                 <input id="ng-min" type="number" min={5} max={1440} step={5} className="input" value={f.minutes} onChange={(e) => set("minutes", Number(e.target.value) || 5)} />
-              </div>
-              <div>
-                <label className="label" htmlFor="ng-time">Start time</label>
-                <input id="ng-time" type="time" className="input" value={f.prefStart} onChange={(e) => set("prefStart", e.target.value)} />
-              </div>
-              <div>
-                <label className="label" htmlFor="ng-start">Start date</label>
-                <input id="ng-start" type="date" className="input" value={f.startDate} onChange={(e) => set("startDate", e.target.value)} />
               </div>
               <div>
                 <label className="label" htmlFor="ng-dl">Deadline</label>
@@ -180,6 +159,40 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
                 })}
               </div>
             </div>
+
+            <details className="group md:col-span-2" open={moreOpen} onToggle={(e) => setMoreOpen((e.target as HTMLDetailsElement).open)}>
+              <summary className="cursor-pointer list-none text-sm text-muted select-none hover:text-ink">
+                <span className="inline-block transition-transform group-open:rotate-90" aria-hidden>›</span> More details <span className="text-faint">(levels, what you know, start date and time)</span>
+              </summary>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="label" htmlFor="ng-cur">Starting from</label>
+                  <input id="ng-cur" className="input" value={f.currentLevel} onChange={(e) => set("currentLevel", e.target.value)} />
+                </div>
+                <div>
+                  <label className="label" htmlFor="ng-tgt">Aiming for</label>
+                  <input id="ng-tgt" className="input" value={f.targetLevel} onChange={(e) => set("targetLevel", e.target.value)} />
+                </div>
+                <div>
+                  <label className="label" htmlFor="ng-known">Already know</label>
+                  <textarea id="ng-known" rows={2} className="input resize-none" value={f.known} onChange={(e) => set("known", e.target.value)} placeholder="Python basics, ~20 easy problems" />
+                </div>
+                <div>
+                  <label className="label" htmlFor="ng-prefs">How you like to learn</label>
+                  <textarea id="ng-prefs" rows={2} className="input resize-none" value={f.prefs} onChange={(e) => set("prefs", e.target.value)} placeholder="Short videos, then lots of practice" />
+                </div>
+                <div className="grid grid-cols-2 gap-3 md:col-span-2">
+                  <div>
+                    <label className="label" htmlFor="ng-time">Start time</label>
+                    <input id="ng-time" type="time" className="input" value={f.prefStart} onChange={(e) => set("prefStart", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="ng-start">Start date</label>
+                    <input id="ng-start" type="date" className="input" value={f.startDate} onChange={(e) => set("startDate", e.target.value)} />
+                  </div>
+                </div>
+              </div>
+            </details>
 
             <div className="rounded-lg bg-panel-2 px-4 py-3 md:col-span-2">
               <div className="font-serif text-3xl">{Math.round(B.minutes / 60)} hours</div>
@@ -208,5 +221,6 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
         )}
       </div>
     </div>
+    </OnTop>
   );
 }

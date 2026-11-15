@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import type { Goal, SourceType, TaskKind } from "@/lib/types";
 import { progress } from "@/lib/schedule";
 
@@ -111,12 +112,13 @@ function CompleteDialog({ title, onCancel, onSave }: { title: string; onCancel: 
   }, [onCancel]);
 
   return (
+    <OnTop>
     <div className="fixed inset-0 z-50 grid place-items-center bg-scrim p-4" onClick={onCancel}>
       <form
         role="dialog"
         aria-modal="true"
         aria-labelledby="complete-title"
-        className="w-full max-w-md rounded-[14px] border border-line bg-panel p-6 shadow-2xl shadow-black"
+        className="w-full max-w-md rounded-[14px] border border-line bg-panel p-6 shadow-2xl shadow-black/30"
         onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => {
           e.preventDefault();
@@ -143,13 +145,14 @@ function CompleteDialog({ title, onCancel, onSave }: { title: string; onCancel: 
         />
         <p className="mt-2 text-xs text-muted">Saved with today&apos;s date on this task. Optional, but it makes reviews much easier.</p>
         <div className="mt-6 flex justify-end gap-2">
-          <button type="button" className="btn" onClick={onCancel}>
+          <button type="button" className="btn btn-quiet" onClick={onCancel}>
             Cancel
           </button>
           <button className="btn btn-primary">Mark complete</button>
         </div>
       </form>
     </div>
+    </OnTop>
   );
 }
 
@@ -157,7 +160,7 @@ function CompleteDialog({ title, onCancel, onSave }: { title: string; onCancel: 
 export function ConfirmButton({ onConfirm, children, confirmText = "Click again to confirm" }: { onConfirm: () => void; children: React.ReactNode; confirmText?: string }) {
   const [armed, setArmed] = useState(false);
   return (
-    <button type="button" className={`btn ${armed ? "border-bad text-bad" : ""}`} onClick={() => (armed ? onConfirm() : setArmed(true))} onBlur={() => setArmed(false)}>
+    <button type="button" className={`btn btn-danger ${armed ? "bg-bad/10" : ""}`} onClick={() => (armed ? onConfirm() : setArmed(true))} onBlur={() => setArmed(false)}>
       {armed ? confirmText : children}
     </button>
   );
@@ -178,3 +181,74 @@ export function PageHeader({ title, sub, children }: { title: string; sub?: Reac
 /** Formats an ISO completion time as "Mon 21 Oct, 20:13". */
 export const fmtDoneAt = (iso: string) =>
   new Date(iso).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+export interface MenuItem {
+  label: string;
+  onSelect: () => void;
+  /** Deleting or archiving: asks for a second click. */
+  danger?: boolean;
+  /** Not possible right now: left out of the menu. */
+  disabled?: boolean;
+}
+
+/** A "⋯" button that opens a short list of less frequent actions. */
+export function Menu({ items, label = "More actions" }: { items: MenuItem[]; label?: string }) {
+  const [open, setOpen] = useState(false);
+  const [armed, setArmed] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent ? e.key === "Escape" : !ref.current?.contains(e.target as Node)) {
+        setOpen(false);
+        setArmed(null);
+      }
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [open]);
+  const shown = items.filter((i) => !i.disabled);
+  if (!shown.length) return null;
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" className="btn btn-quiet btn-icon" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((x) => !x)}>
+        <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden><circle cx="4" cy="10" r="1.6" /><circle cx="10" cy="10" r="1.6" /><circle cx="16" cy="10" r="1.6" /></svg>
+      </button>
+      {open && (
+        <div role="menu" className="glass absolute right-0 z-30 mt-1 min-w-48 rounded-xl border border-line bg-bg p-1 shadow-xl shadow-black/30">
+          {shown.map((i) => (
+            <button
+              key={i.label}
+              type="button"
+              role="menuitem"
+              className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-panel-2 ${i.danger ? "text-bad" : "text-ink"}`}
+              onClick={() => {
+                if (i.danger && armed !== i.label) return setArmed(i.label);
+                setOpen(false);
+                setArmed(null);
+                i.onSelect();
+              }}
+            >
+              {i.danger && armed === i.label ? `Click again to ${i.label.toLowerCase()}` : i.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Renders pop-ups at the top of the page. Needed because a blurred (glass) panel becomes the frame
+ * for fixed-position children, which would otherwise be boxed inside the panel.
+ */
+export function OnTop({ children }: { children: React.ReactNode }) {
+  // Nothing on the server and in the first client pass, so hydration matches
+  const client = useSyncExternalStore(noSubscribe, () => true, () => false);
+  return client ? createPortal(children, document.body) : null;
+}
+const noSubscribe = () => () => {};

@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { useStore } from "@/lib/store";
 import { AgentBot } from "@/components/AgentBot";
 import { AccountBox, AccountGate, Notice } from "@/components/AccountGate";
+import { QuickLook } from "@/components/Appearance";
 
 /** Where MyLife mark: a path that bends through three waypoints, the last one lit. */
 export function Logo({ className = "" }: { className?: string }) {
@@ -38,8 +39,9 @@ export function Shell({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="min-h-dvh md:grid md:grid-cols-[216px_1fr]">
-      <aside className="sticky top-0 z-20 border-b border-line bg-bg md:h-dvh md:border-r md:border-b-0">
+    // Two panels float over the wall (or wallpaper): the side panel and the main panel
+    <div className="min-h-dvh md:grid md:grid-cols-[232px_1fr] md:gap-3 md:p-3">
+      <aside className="glass sticky top-0 z-20 flex flex-col border-b border-line bg-bg md:top-3 md:h-[calc(100dvh-1.5rem)] md:rounded-[22px] md:border">
         <Link href="/goals" className="flex items-center gap-2.5 px-5 py-4 md:py-6">
           <Logo className="h-6 w-6 text-ink" />
           <span className="font-serif text-xl leading-none whitespace-nowrap">Where MyLife</span>
@@ -49,17 +51,21 @@ export function Shell({ children }: { children: ReactNode }) {
             <Link
               key={n.href}
               href={n.href}
-              className={`shrink-0 rounded-lg px-3 py-2 text-sm transition ${active(n) ? "bg-panel-2 text-ink" : "text-muted hover:text-ink"}`}
+              aria-current={active(n) ? "page" : undefined}
+              className={`shrink-0 rounded-[10px] px-3 py-2 text-sm transition-colors ${active(n) ? "bg-panel-2 font-medium text-ink" : "text-muted hover:bg-panel-2/60 hover:text-ink"}`}
             >
               {n.label}
             </Link>
           ))}
         </nav>
-        <AccountBox />
+        <div className="mt-auto hidden space-y-5 border-t border-line p-4 md:block">
+          <QuickLook />
+          <AccountBox />
+        </div>
       </aside>
       {/* Bottom padding keeps page content clear of the assistant's button */}
-      <main className="mx-auto w-full max-w-[1200px] px-4 pt-6 pb-28 md:px-10 md:pt-10">
-        {children}
+      <main className="glass min-w-0 md:min-h-[calc(100dvh-1.5rem)] md:rounded-[22px] md:border md:border-line md:bg-bg">
+        <div className="mx-auto w-full max-w-[1160px] px-4 pt-6 pb-28 md:px-10 md:pt-10">{children}</div>
       </main>
       <AgentBot />
       <Notice />

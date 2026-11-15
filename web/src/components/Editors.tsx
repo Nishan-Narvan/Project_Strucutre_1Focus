@@ -7,7 +7,7 @@ import { useStore } from "@/lib/store";
 import { fmtDate, fmtDuration, today, uid, WEEK_ORDER, WEEKDAYS } from "@/lib/date";
 import { isActive, isEditable, limitsOf } from "@/lib/rules";
 import { TASK_KINDS } from "@/lib/roadmap";
-import { ConfirmButton } from "@/components/ui";
+import { Menu } from "@/components/ui";
 import type { Goal, Session, Task, TaskKind } from "@/lib/types";
 
 /**
@@ -54,18 +54,22 @@ export function GoalEditor({ goal: g }: { goal: Goal }) {
 
   return (
     <section className="card mt-8" aria-label="Goal settings">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-medium">Goal details</h2>
+          <p className="text-sm text-muted">Why, levels, daily time, study days and deadline.</p>
+        </div>
         <button type="button" className="btn" aria-expanded={open} onClick={() => { setF(initial()); setMsg(""); setOpen((x) => !x); }}>
-          {open ? "Close editor" : "Edit goal"}
+          {open ? "Close" : "Edit goal"}
         </button>
-        {status === "active" ? (
-          <button type="button" className="btn" onClick={() => setStatus("paused")}>Pause</button>
-        ) : (
-          <button type="button" className="btn btn-primary" onClick={() => setStatus("active")}>Resume</button>
-        )}
-        {status !== "archived" && <ConfirmButton onConfirm={() => setStatus("archived")} confirmText="Click again to archive">Archive</ConfirmButton>}
-        <span className="ml-auto" />
-        <ConfirmButton onConfirm={() => { apply({ type: "delete_goal", goalId: g.id }); router.push("/goals"); }}>Delete goal</ConfirmButton>
+        <Menu
+          label="More goal actions"
+          items={[
+            status === "active" ? { label: "Pause", onSelect: () => setStatus("paused") } : { label: "Resume", onSelect: () => setStatus("active") },
+            { label: "Archive", onSelect: () => setStatus("archived"), danger: true, disabled: status === "archived" },
+            { label: "Delete goal", onSelect: () => { apply({ type: "delete_goal", goalId: g.id }); router.push("/goals"); }, danger: true },
+          ]}
+        />
       </div>
 
       {open && (
@@ -177,7 +181,7 @@ export function AddPhase({ goal: g, label = "Add a phase" }: { goal: Goal; label
     >
       <input className="input w-64" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Phase name" aria-label="Phase name" />
       <button className="btn btn-primary">Add</button>
-      <button type="button" className="btn" onClick={() => setOpen(false)}>Cancel</button>
+      <button type="button" className="btn btn-quiet" onClick={() => setOpen(false)}>Cancel</button>
     </form>
   );
 }
@@ -203,12 +207,17 @@ export function PhaseEditor({ goal: g, index }: { goal: Goal; index: number }) {
   };
   return (
     <div className="mt-6">
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button type="button" className="btn" onClick={() => { setF(fields()); setOpen((x) => !x); }}>{open ? "Close" : "Edit phase"}</button>
-        <button type="button" className="btn" onClick={elaborate}>Ask the assistant to elaborate</button>
-        <button type="button" className="btn" disabled={index === 0} onClick={() => move(-1)}>Move earlier</button>
-        <button type="button" className="btn" disabled={index === g.roadmap.modules.length - 1} onClick={() => move(1)}>Move later</button>
-        {editable && <ConfirmButton onConfirm={() => { if (!apply({ type: "delete_phase", goalId: g.id, phaseId: m.id })) router.push(`/goals/${g.id}`); }}>Delete phase</ConfirmButton>}
+        <button type="button" className="btn btn-quiet" onClick={elaborate}>Ask the assistant to elaborate</button>
+        <Menu
+          label="More phase actions"
+          items={[
+            { label: "Move earlier", onSelect: () => move(-1), disabled: index === 0 },
+            { label: "Move later", onSelect: () => move(1), disabled: index === g.roadmap.modules.length - 1 },
+            { label: "Delete phase", onSelect: () => { if (!apply({ type: "delete_phase", goalId: g.id, phaseId: m.id })) router.push(`/goals/${g.id}`); }, danger: true, disabled: !editable },
+          ]}
+        />
       </div>
       {open && (
         <form
@@ -280,7 +289,7 @@ export function TaskControls({ goal: g, task, phaseIndex, position, done }: { go
           <input type="number" min={5} max={600} step={5} className="input w-24" value={f.minutes} onChange={(e) => setF({ ...f, minutes: Number(e.target.value) || 5 })} aria-label="Minutes" />
         </div>
         <textarea className="input resize-none" rows={2} value={f.detail} onChange={(e) => setF({ ...f, detail: e.target.value })} aria-label="Detail" placeholder="What exactly to do" />
-        <div className="flex gap-2"><button className="btn btn-primary">Save</button><button type="button" className="btn" onClick={() => setEdit(false)}>Cancel</button></div>
+        <div className="flex gap-2"><button className="btn btn-primary">Save</button><button type="button" className="btn btn-quiet" onClick={() => setEdit(false)}>Cancel</button></div>
       </form>
     );
   if (inserting) return <InsertTask goal={g} phaseIndex={phaseIndex} at={position + 1} onDone={() => setInserting(false)} />;
@@ -318,7 +327,7 @@ export function SessionControls({ goal: g, session: s }: { goal: Goal; session: 
       <form className="mt-1.5 flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); if (!apply({ type: "skip_session", goalId: g.id, sessionId: s.id, reason: text, at: new Date().toISOString() })) setMode(""); }}>
         <input className="input w-56" autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="Why? (sick, travelling…)" aria-label="Reason for skipping" />
         <button className="btn">Skip it</button>
-        <button type="button" className="btn" onClick={() => setMode("")}>Cancel</button>
+        <button type="button" className="btn btn-quiet" onClick={() => setMode("")}>Cancel</button>
       </form>
     );
   if (mode === "move")
@@ -327,14 +336,14 @@ export function SessionControls({ goal: g, session: s }: { goal: Goal; session: 
         <input type="date" className="input w-auto" value={date} min={today()} onChange={(e) => setDate(e.target.value)} aria-label="New date" />
         <input type="time" className="input w-auto" value={time} onChange={(e) => setTime(e.target.value)} aria-label="Start time (optional)" />
         <button className="btn">Move</button>
-        <button type="button" className="btn" onClick={() => setMode("")}>Cancel</button>
+        <button type="button" className="btn btn-quiet" onClick={() => setMode("")}>Cancel</button>
       </form>
     );
   if (mode === "note")
     return (
       <form className="mt-1.5 grid gap-2" onSubmit={(e) => { e.preventDefault(); if (!apply({ type: "set_session_note", goalId: g.id, sessionId: s.id, note: text })) setMode(""); }}>
         <textarea className="input resize-none" rows={2} autoFocus value={text} onChange={(e) => setText(e.target.value)} aria-label="Note" />
-        <div className="flex gap-2"><button className="btn">Save note</button><button type="button" className="btn" onClick={() => setMode("")}>Cancel</button></div>
+        <div className="flex gap-2"><button className="btn">Save note</button><button type="button" className="btn btn-quiet" onClick={() => setMode("")}>Cancel</button></div>
       </form>
     );
   return (
@@ -405,7 +414,7 @@ export function EventItem({ event: e }: { event: import("@/lib/types").DayEvent 
             <input type="time" className="input w-auto" value={f.start} onChange={(x) => setF({ ...f, start: x.target.value })} aria-label="Start" />
             <input type="time" className="input w-auto" value={f.end} onChange={(x) => setF({ ...f, end: x.target.value })} aria-label="End" />
           </div>
-          <div className="flex gap-2"><button className="btn">Save</button><button type="button" className="btn" onClick={() => setEdit(false)}>Cancel</button></div>
+          <div className="flex gap-2"><button className="btn">Save</button><button type="button" className="btn btn-quiet" onClick={() => setEdit(false)}>Cancel</button></div>
         </form>
       </li>
     );
@@ -438,7 +447,7 @@ export function InsertTask({ goal: g, phaseIndex, at, onDone }: { goal: Goal; ph
       </select>
       <input type="number" min={5} max={600} step={5} className="input w-24" value={f.minutes} onChange={(e) => setF({ ...f, minutes: Number(e.target.value) || 5 })} aria-label="Minutes" />
       <button className="btn btn-primary">Insert</button>
-      <button type="button" className="btn" onClick={onDone}>Cancel</button>
+      <button type="button" className="btn btn-quiet" onClick={onDone}>Cancel</button>
     </form>
   );
 }
@@ -462,7 +471,7 @@ export function PhaseList({ goal: g }: { goal: Goal }) {
         <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); insert(index); }}>
           <input className="input min-w-48 flex-1" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder={`New phase ${index + 1}`} aria-label="New phase name" />
           <button className="btn btn-primary">Insert phase</button>
-          <button type="button" className="btn" onClick={() => setAt(null)}>Cancel</button>
+          <button type="button" className="btn btn-quiet" onClick={() => setAt(null)}>Cancel</button>
         </form>
       </li>
     ) : (

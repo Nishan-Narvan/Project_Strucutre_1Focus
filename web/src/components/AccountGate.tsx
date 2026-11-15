@@ -113,12 +113,13 @@ export function AccountBox() {
   const [undone, setUndone] = useState("");
   if (!user) return null;
   return (
-    <div className="hidden px-5 pt-6 text-xs text-faint md:block">
+    <div className="text-xs text-faint">
       <p className="truncate text-muted" title={user.email}>{user.email}</p>
       <p className="mt-0.5">{saving ? "Saving…" : "All changes saved"}</p>
+      <div className="mt-2 flex flex-wrap gap-1">
       <button
         type="button"
-        className="mt-2 block text-muted underline underline-offset-2 hover:text-ink"
+        className="btn btn-quiet btn-sm -ml-2.5"
         onClick={async () => {
           try {
             const what = await undo();
@@ -129,12 +130,13 @@ export function AccountBox() {
           setTimeout(() => setUndone(""), 5000);
         }}
       >
-        Undo last change
+        Undo
       </button>
-      {undone && <p className="mt-1 text-muted" role="status">{undone}</p>}
-      <form action="/auth/logout" method="post" className="mt-2">
-        <button className="text-muted underline underline-offset-2 hover:text-ink">Sign out</button>
+      <form action="/auth/logout" method="post">
+        <button className="btn btn-quiet btn-sm">Sign out</button>
       </form>
+      </div>
+      {undone && <p className="mt-1 text-muted" role="status">{undone}</p>}
     </div>
   );
 }
@@ -144,7 +146,7 @@ export function Notice() {
   const { notice, dismissNotice, status } = useStore();
   if (!notice || status !== "ready") return null;
   return (
-    <div role="alert" className="fixed bottom-5 left-1/2 z-50 flex w-[min(92vw,520px)] -translate-x-1/2 items-start gap-3 rounded-[12px] border border-bad/40 bg-panel px-4 py-3 text-sm text-ink shadow-2xl shadow-black">
+    <div role="alert" className="fixed bottom-5 left-1/2 z-50 flex w-[min(92vw,520px)] -translate-x-1/2 items-start gap-3 rounded-[12px] border border-bad/40 bg-panel px-4 py-3 text-sm text-ink shadow-2xl shadow-black/30">
       <span className="flex-1">{notice}</span>
       <button type="button" className="text-muted hover:text-ink" onClick={dismissNotice} aria-label="Dismiss">Close</button>
     </div>

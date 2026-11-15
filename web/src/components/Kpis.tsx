@@ -133,7 +133,7 @@ function AddKpi({ goalId }: { goalId?: string }) {
       )}
       <div className="flex items-end gap-2 sm:col-span-2">
         <button className="btn btn-primary">Start tracking</button>
-        <button type="button" className="btn" onClick={() => setOpen(false)}>Cancel</button>
+        <button type="button" className="btn btn-quiet" onClick={() => setOpen(false)}>Cancel</button>
       </div>
     </form>
   );

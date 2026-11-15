@@ -10,7 +10,7 @@ import { limitsOf } from "@/lib/rules";
 import { PhaseEditor, TaskControls } from "@/components/Editors";
 import { MaterialsPanel, TaskMaterials } from "@/components/Materials";
 import { NotionNotes } from "@/components/NotionView";
-import { CompleteButton, fmtDoneAt, KindTag, SourceBadge } from "@/components/ui";
+import { CompleteButton, fmtDoneAt, KindTag, OnTop, SourceBadge } from "@/components/ui";
 import type { Goal, TaskKind } from "@/lib/types";
 
 /** Full-screen view of one phase: how complete it is first, then the work. */
@@ -252,18 +252,20 @@ function usePhaseNav(base: string | null, index: number, total: number) {
 
 function SideButton({ dir, href, label }: { dir: "prev" | "next"; href: string; label: string }) {
   return (
-    <Link
-      href={href}
-      aria-label={label}
-      title={label}
-      className={`fixed top-1/2 z-30 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full border border-line bg-bg/80 text-ink transition hover:border-muted hover:bg-panel-2 ${
-        dir === "prev" ? "left-2 md:left-[228px]" : "right-2 md:right-4"
-      }`}
-    >
-      <svg viewBox="0 0 16 16" className="h-4 w-4" aria-hidden>
-        <path d={dir === "prev" ? "M10 3 5 8l5 5" : "M6 3l5 5-5 5"} stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </Link>
+    <OnTop>
+      <Link
+        href={href}
+        aria-label={label}
+        title={label}
+        className={`fixed top-1/2 z-30 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full border border-line bg-bg/80 text-ink transition hover:border-muted hover:bg-panel-2 ${
+          dir === "prev" ? "left-2 md:left-[262px]" : "right-2 md:right-4"
+        }`}
+      >
+        <svg viewBox="0 0 16 16" className="h-4 w-4" aria-hidden>
+          <path d={dir === "prev" ? "M10 3 5 8l5 5" : "M6 3l5 5-5 5"} stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </Link>
+    </OnTop>
   );
 }
 

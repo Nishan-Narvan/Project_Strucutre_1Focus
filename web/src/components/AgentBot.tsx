@@ -183,7 +183,7 @@ export function AgentBot() {
         <div
           role="dialog"
           aria-label="Assistant"
-          className={`fixed inset-x-3 top-3 bottom-24 z-40 flex flex-col overflow-hidden rounded-[18px] border border-line bg-bg shadow-2xl shadow-black sm:top-auto sm:right-5 sm:left-auto ${
+          className={`fixed inset-x-3 top-3 bottom-24 z-40 flex flex-col overflow-hidden rounded-[18px] border border-line bg-bg shadow-2xl shadow-black/30 sm:top-auto sm:right-5 sm:left-auto ${
             big ? "sm:h-[calc(100dvh-7.5rem)] sm:w-[min(720px,calc(100vw-2.5rem))]" : "sm:h-[min(640px,calc(100dvh-7.5rem))] sm:w-[400px]"
           }`}
         >

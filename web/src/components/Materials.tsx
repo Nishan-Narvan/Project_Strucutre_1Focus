@@ -87,7 +87,7 @@ export function MaterialsPanel({ goal: g, phaseId }: { goal: Goal; phaseId?: str
         What already exists for this {phaseId ? "phase" : "goal"}: Notion pages, Drive folders, docs, PDFs, videos, or files on your computer. The assistant and Claude can see these and open the ones they have access to.
       </p>
       {list.length > 0 && <ul className="mt-3 divide-y divide-line border-y border-line">{list.map((m) => <Item key={m.id} goal={g} m={m} showPlace={!phaseId} />)}</ul>}
-      <form onSubmit={add} className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]">
+      <form onSubmit={add} className="mt-4 grid gap-2 sm:grid-cols-[1fr_12rem]">
         <input className="input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Paste a link or a file path: https://notion.so/…, drive.google.com/…, D:/Notes/trees.pdf" aria-label="Link or file path" />
         <button className="btn btn-primary" disabled={!url.trim()}>Add</button>
         <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={url.trim() ? `Name (default: ${titleFromUrl(url)})` : "Name (optional)"} aria-label="Name" />

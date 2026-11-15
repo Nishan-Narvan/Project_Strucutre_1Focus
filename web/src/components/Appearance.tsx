@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useStore } from "@/lib/store";
 import type { Appearance } from "@/lib/types";
-import { CACHE_KEY, DEFAULT_APPEARANCE } from "@/lib/appearance";
+import { CACHE_KEY, DEFAULT_APPEARANCE, glassOf } from "@/lib/appearance";
 
 /**
  * Theme (dark, light or follow the system), glass panels, and a full-screen background image.
@@ -92,7 +92,7 @@ function useAppearance(): Appearance {
   return { ...DEFAULT_APPEARANCE, ...(live ?? (ready ? saved : cached ?? undefined)) };
 }
 
-/** Applies the look to the page and draws the background. Mounted once, around everything. */
+/** Applies the look to the page and draws the wallpaper. Mounted once, around everything. */
 export function AppearanceLayer() {
   const a = useAppearance();
   const systemDark = useSystemDark();
@@ -107,17 +107,17 @@ export function AppearanceLayer() {
   );
 
   const theme = a.theme === "system" ? (systemDark ? "dark" : "light") : a.theme;
+  const g = glassOf(a);
 
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.theme = theme;
-    root.dataset.glass = a.glass ? "on" : "off";
-    root.style.setProperty("--panel-alpha", a.glass ? `${Math.min(100, Math.max(20, a.panelOpacity))}%` : "100%");
-    root.style.setProperty("--glass-blur", `${Math.min(40, Math.max(0, a.blur))}px`);
+    root.dataset.glass = g > 0 ? "on" : "off";
+    root.style.setProperty("--g", String(g / 100));
     try {
       localStorage.setItem(CACHE_KEY, JSON.stringify(a));
     } catch {}
-  }, [theme, a]);
+  }, [theme, g, a]);
 
   // The uploaded image lives in IndexedDB; turn it into a URL while it is shown
   useEffect(() => {
@@ -140,30 +140,23 @@ export function AppearanceLayer() {
   return <div className="app-backdrop" aria-hidden style={{ backgroundImage: `url(${JSON.stringify(src)})`, opacity: Math.min(100, Math.max(0, a.backgroundOpacity)) / 100 }} />;
 }
 
-function Slider({ label, value, min, max, unit, onChange }: { label: string; value: number; min: number; max: number; unit: string; onChange: (v: number) => void }) {
-  const id = `ap-${label.replace(/\W+/g, "-").toLowerCase()}`;
-  return (
-    <div>
-      <div className="flex items-baseline justify-between">
-        <label className="label" htmlFor={id}>{label}</label>
-        <span className="text-sm text-muted tabular-nums">{value}{unit}</span>
-      </div>
-      <input id={id} type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-[var(--color-crystal)]" />
-    </div>
-  );
-}
-
-/** Settings section for the look. Slider moves are saved after a short pause, not on every pixel. */
-export function AppearanceSettings() {
+/**
+ * Edit the look: changes show at once and are saved after a short pause (sliders move in many
+ * small steps). A change still waiting is saved when leaving the page.
+ */
+function useLookEditor() {
   const { state, saveSettings } = useStore();
   const saved = { ...DEFAULT_APPEARANCE, ...state.settings.appearance };
   const [a, setA] = useState<Appearance>(saved);
-  const [url, setUrl] = useState(saved.backgroundUrl ?? "");
-  const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unsaved = useRef<Appearance | null>(null);
 
-  // A change still waiting for the slider to settle is saved at once when leaving the page
+  // Follow changes made elsewhere (the other control, another device) when nothing is being edited here
+  const savedKey = JSON.stringify(saved);
+  useEffect(() => {
+    if (!timer.current) setA(JSON.parse(savedKey));
+  }, [savedKey]);
+
   useEffect(() => {
     const flush = () => {
       if (!unsaved.current) return;
@@ -179,16 +172,9 @@ export function AppearanceSettings() {
     };
   }, [saveSettings]);
 
-  // Follow changes made elsewhere (another device, or Claude) when nothing is being edited here
-  const savedKey = JSON.stringify(saved);
-  useEffect(() => {
-    if (!timer.current) setA(JSON.parse(savedKey));
-  }, [savedKey]);
-
   const update = (patch: Partial<Appearance>, delay = 0) => {
     const next = { ...a, ...patch };
     setA(next);
-    // Show it at once; save it after the slider settles
     preview(next);
     if (timer.current) clearTimeout(timer.current);
     unsaved.current = next;
@@ -198,6 +184,58 @@ export function AppearanceSettings() {
       saveSettings({ appearance: next });
     }, delay);
   };
+  return { a, update };
+}
+
+function Slider({ label, value, min, max, unit, onChange, compact }: { label: string; value: number; min: number; max: number; unit: string; onChange: (v: number) => void; compact?: boolean }) {
+  const id = `ap-${label.replace(/\W+/g, "-").toLowerCase()}${compact ? "-quick" : ""}`;
+  return (
+    <div>
+      <div className="mb-1.5 flex items-baseline justify-between">
+        <label className={compact ? "text-xs text-muted" : "label mb-0"} htmlFor={id}>{label}</label>
+        <span className="text-xs text-muted tabular-nums">{value}{unit}</span>
+      </div>
+      <input id={id} type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} className="range" />
+    </div>
+  );
+}
+
+const SunMoon = ({ dark }: { dark: boolean }) => (
+  <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden>
+    {dark ? (
+      <path d="M15.5 12.5A6.5 6.5 0 0 1 7.5 4.5a6.5 6.5 0 1 0 8 8Z" />
+    ) : (
+      <>
+        <circle cx="10" cy="10" r="3.5" />
+        <path d="M10 2v1.5M10 16.5V18M2 10h1.5M16.5 10H18M4.3 4.3l1.1 1.1M14.6 14.6l1.1 1.1M4.3 15.7l1.1-1.1M14.6 5.4l1.1-1.1" />
+      </>
+    )}
+  </svg>
+);
+
+/** In the side panel, on every page: the glass slider and a dark/light switch. */
+export function QuickLook() {
+  const { a, update } = useLookEditor();
+  const systemDark = useSystemDark();
+  const dark = (a.theme === "system" ? (systemDark ? "dark" : "light") : a.theme) === "dark";
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-muted">{dark ? "Dark" : "Light"}</span>
+        <button type="button" className="btn btn-quiet btn-sm btn-icon" onClick={() => update({ theme: dark ? "light" : "dark" })} aria-label={dark ? "Switch to light mode" : "Switch to dark mode"} title={dark ? "Switch to light mode" : "Switch to dark mode"}>
+          <SunMoon dark={dark} />
+        </button>
+      </div>
+      <Slider compact label="Glass" value={glassOf(a)} min={0} max={100} unit="%" onChange={(v) => update({ glassLevel: v }, 400)} />
+    </div>
+  );
+}
+
+/** Settings: theme, glass and the wallpaper. */
+export function AppearanceSettings() {
+  const { a, update } = useLookEditor();
+  const [url, setUrl] = useState(a.backgroundUrl ?? "");
+  const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
 
   async function upload(file: File | undefined) {
     if (!file) return;
@@ -205,19 +243,19 @@ export function AppearanceSettings() {
     try {
       await setDeviceImage(await shrink(file));
       bumpImage();
-      // An image over a solid page needs see-through panels to show; turn glass on the first time
-      update({ background: "device", ...(a.background === "none" ? { glass: true } : {}) });
-      setMsg({ text: "Background set. It is kept on this device only." });
+      // A wallpaper only shows through see-through panels: add some glass the first time
+      update({ background: "device", ...(glassOf(a) === 0 ? { glassLevel: 45 } : {}) });
+      setMsg({ text: "Wallpaper set. It is kept on this device only." });
     } catch (e) {
       setMsg({ text: e instanceof Error ? e.message : "Could not use that image.", bad: true });
     }
   }
 
-  function useUrl() {
+  function useLink() {
     const u = url.trim();
     if (!/^https:\/\/\S+$/i.test(u)) return setMsg({ text: "Paste an https:// link to an image.", bad: true });
-    update({ background: "url", backgroundUrl: u, ...(a.background === "none" ? { glass: true } : {}) });
-    setMsg({ text: "Background set from the link. It shows on all your devices." });
+    update({ background: "url", backgroundUrl: u, ...(glassOf(a) === 0 ? { glassLevel: 45 } : {}) });
+    setMsg({ text: "Wallpaper set from the link. It shows on all your devices." });
   }
 
   return (
@@ -226,17 +264,19 @@ export function AppearanceSettings() {
 
       <div>
         <span className="label">Theme</span>
-        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Theme">
+        <div className="inline-flex rounded-[10px] border border-line bg-panel-2 p-0.5" role="radiogroup" aria-label="Theme">
           {(["dark", "light", "system"] as const).map((t) => (
-            <button key={t} type="button" role="radio" aria-checked={a.theme === t} onClick={() => update({ theme: t })} className={`btn ${a.theme === t ? "btn-primary" : ""}`}>
-              {t === "system" ? "Match my device" : t === "dark" ? "Dark" : "Light"}
+            <button key={t} type="button" role="radio" aria-checked={a.theme === t} onClick={() => update({ theme: t })} className={`h-8 rounded-lg px-3 text-sm transition-colors ${a.theme === t ? "bg-ink text-on-ink" : "text-muted hover:text-ink"}`}>
+              {t === "system" ? "Match device" : t === "dark" ? "Dark" : "Light"}
             </button>
           ))}
         </div>
       </div>
 
+      <Slider label="Glass: how see-through and blurred every panel is" value={glassOf(a)} min={0} max={100} unit="%" onChange={(v) => update({ glassLevel: v }, 400)} />
+
       <div className="space-y-3">
-        <span className="label">Background image</span>
+        <span className="label">Wallpaper</span>
         <div className="flex flex-wrap gap-2">
           <label className="btn cursor-pointer">
             Upload an image
@@ -245,38 +285,25 @@ export function AppearanceSettings() {
           {a.background !== "none" && (
             <button
               type="button"
-              className="btn"
+              className="btn btn-quiet"
               onClick={() => {
                 if (a.background === "device") void clearDeviceImage().then(bumpImage);
                 update({ background: "none" });
-                setMsg({ text: "Background removed." });
+                setMsg({ text: "Wallpaper removed." });
               }}
             >
-              Remove background
+              Remove wallpaper
             </button>
           )}
         </div>
         <div className="flex gap-2">
           <input className="input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Or paste an image link: https://…" aria-label="Image link" />
-          <button type="button" className="btn shrink-0" onClick={useUrl}>Use link</button>
+          <button type="button" className="btn" onClick={useLink}>Use link</button>
         </div>
         <p className="text-xs text-muted">
-          {a.background === "device" ? "Using an image uploaded on this device. Other devices keep their own." : a.background === "url" ? "Using an image link, on all your devices." : "No background image."}
+          {a.background === "device" ? "Using an image uploaded on this device. Other devices keep their own." : a.background === "url" ? "Using an image link, on all your devices." : "No wallpaper."} Raise Glass to see it through the panels; the same slider softens the wallpaper itself.
         </p>
-        {a.background !== "none" && <Slider label="Image visibility" value={a.backgroundOpacity} min={5} max={100} unit="%" onChange={(v) => update({ backgroundOpacity: v }, 400)} />}
-      </div>
-
-      <div className="space-y-4">
-        <label className="flex items-center gap-3 text-sm text-ink">
-          <input type="checkbox" checked={a.glass} onChange={(e) => update({ glass: e.target.checked })} className="h-4 w-4 accent-[var(--color-crystal)]" />
-          Glass panels: see-through and blurred, so the background shows behind them
-        </label>
-        {a.glass && (
-          <>
-            <Slider label="Panel solidity" value={a.panelOpacity} min={20} max={100} unit="%" onChange={(v) => update({ panelOpacity: v }, 400)} />
-            <Slider label="Blur" value={a.blur} min={0} max={40} unit="px" onChange={(v) => update({ blur: v }, 400)} />
-          </>
-        )}
+        {a.background !== "none" && <Slider label="Wallpaper brightness" value={a.backgroundOpacity} min={5} max={100} unit="%" onChange={(v) => update({ backgroundOpacity: v }, 400)} />}
       </div>
 
       {msg && <p className={`text-sm ${msg.bad ? "text-bad" : "text-muted"}`} role="status">{msg.text}</p>}

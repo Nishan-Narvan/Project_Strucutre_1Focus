@@ -248,8 +248,10 @@ export interface Appearance {
   glass: boolean;
   /** How solid panels are in glass mode, 20-100. */
   panelOpacity: number;
-  /** Blur behind glass panels, in px. */
+  /** Blur behind glass panels, in px. Older setting; see glassLevel. */
   blur: number;
+  /** One control for the whole look: 0 = solid panels, 100 = most see-through and blurred. */
+  glassLevel?: number;
 }
 
 export interface McpTool {
