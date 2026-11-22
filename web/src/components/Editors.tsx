@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { fmtDate, fmtDuration, today, uid, WEEK_ORDER, WEEKDAYS } from "@/lib/date";
 import { isActive, isEditable, limitsOf } from "@/lib/rules";
-import { TASK_KINDS } from "@/lib/roadmap";
+import { KindSelect } from "@/components/Kinds";
 import { Menu } from "@/components/ui";
 import type { Goal, Session, Task, TaskKind } from "@/lib/types";
 
@@ -192,6 +191,10 @@ export function PhaseEditor({ goal: g, index }: { goal: Goal; index: number }) {
   const router = useRouter();
   const m = g.roadmap.modules[index];
   const [open, setOpen] = useState(false);
+  // "Edit" on the roadmap's week list opens this page with #edit
+  useEffect(() => {
+    if (window.location.hash === "#edit") setOpen(true);
+  }, []);
   const fields = () => ({ title: m.title, objective: m.objective, checkpoint: m.checkpoint, level: m.level, notes: m.notes ?? "", zpd_scaffold: m.zpd_scaffold, first_principle: m.first_principle, concepts: m.key_concepts.join(", ") });
   const [f, setF] = useState(fields);
   const editable = isEditable(g, limitsOf(state).editWindowDays);
@@ -258,61 +261,63 @@ export function PhaseEditor({ goal: g, index }: { goal: Goal; index: number }) {
   );
 }
 
-/** Per-task controls: edit, move up or down, move to another phase, delete. */
-export function TaskControls({ goal: g, task, phaseIndex, position, done }: { goal: Goal; task: Task; phaseIndex: number; position: number; done: boolean }) {
+/**
+ * A task's actions: `menu` is the ⋯ button for the card's corner, `panel` is the open form (edit, insert
+ * below, move to another phase) or null.
+ */
+export function useTaskActions({ goal: g, task, phaseIndex, position, done }: { goal: Goal; task: Task; phaseIndex: number; position: number; done: boolean }) {
   const { state, apply } = useStore();
-  const [edit, setEdit] = useState(false);
-  const [inserting, setInserting] = useState(false);
+  const [mode, setMode] = useState<"" | "edit" | "insert" | "move">("");
   const [f, setF] = useState({ title: task.title, minutes: task.minutes, kind: task.kind, detail: task.detail });
-  const m = g.roadmap.modules[phaseIndex];
   const editable = isEditable(g, limitsOf(state).editWindowDays);
-  const shift = (d: number) => {
-    const ids = m.tasks.map((x) => x.id);
-    const j = position + d;
-    [ids[position], ids[j]] = [ids[j], ids[position]];
-    apply({ type: "reorder_tasks", goalId: g.id, phaseId: m.id, order: ids });
-  };
-  if (edit)
-    return (
+  const menu = (
+    <Menu
+      label={`Actions for ${task.title}`}
+      items={[
+        { label: "Edit", onSelect: () => { setF({ title: task.title, minutes: task.minutes, kind: task.kind, detail: task.detail }); setMode("edit"); } },
+        { label: "Insert a task below", onSelect: () => setMode("insert") },
+        { label: "Move to another phase", onSelect: () => setMode("move"), disabled: g.roadmap.modules.length < 2 },
+        { label: "Remove task", onSelect: () => apply({ type: "remove_task", goalId: g.id, taskId: task.id }), danger: true, disabled: !editable || done },
+      ]}
+    />
+  );
+  let panel: ReactNode = null;
+  if (mode === "edit")
+    panel = (
       <form
-        className="mt-2 grid gap-2"
+        className="mt-3 grid gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!apply({ type: "update_task", goalId: g.id, taskId: task.id, patch: f })) setEdit(false);
+          if (!apply({ type: "update_task", goalId: g.id, taskId: task.id, patch: f })) setMode("");
         }}
       >
-        <input className="input" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} aria-label="Task title" />
+        <input className="input" autoFocus value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} aria-label="Task title" />
         <div className="flex flex-wrap gap-2">
-          <select className="input w-auto" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value as TaskKind })} aria-label="Kind">
-            {TASK_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
-          </select>
+          <KindSelect value={f.kind} onChange={(kind) => setF({ ...f, kind })} />
           <input type="number" min={5} max={600} step={5} className="input w-24" value={f.minutes} onChange={(e) => setF({ ...f, minutes: Number(e.target.value) || 5 })} aria-label="Minutes" />
         </div>
-        <textarea className="input resize-none" rows={2} value={f.detail} onChange={(e) => setF({ ...f, detail: e.target.value })} aria-label="Detail" placeholder="What exactly to do" />
-        <div className="flex gap-2"><button className="btn btn-primary">Save</button><button type="button" className="btn btn-quiet" onClick={() => setEdit(false)}>Cancel</button></div>
+        <textarea className="input resize-y" rows={4} value={f.detail} onChange={(e) => setF({ ...f, detail: e.target.value })} aria-label="What's in it" placeholder="What's in it, one point per line" />
+        <div className="flex gap-2"><button className="btn btn-primary btn-sm">Save</button><button type="button" className="btn btn-quiet btn-sm" onClick={() => setMode("")}>Cancel</button></div>
       </form>
     );
-  if (inserting) return <InsertTask goal={g} phaseIndex={phaseIndex} at={position + 1} onDone={() => setInserting(false)} />;
-  return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-faint">
-      <button type="button" className="hover:text-ink" onClick={() => { setF({ title: task.title, minutes: task.minutes, kind: task.kind, detail: task.detail }); setEdit(true); }}>Edit</button>
-      <button type="button" className="hover:text-ink" onClick={() => setInserting(true)}>Insert task below</button>
-      <button type="button" className="hover:text-ink disabled:opacity-30" disabled={position === 0} onClick={() => shift(-1)} aria-label={`Move ${task.title} up`}>Up</button>
-      <button type="button" className="hover:text-ink disabled:opacity-30" disabled={position === m.tasks.length - 1} onClick={() => shift(1)} aria-label={`Move ${task.title} down`}>Down</button>
-      {g.roadmap.modules.length > 1 && (
+  if (mode === "insert") panel = <InsertTask goal={g} phaseIndex={phaseIndex} at={position + 1} onDone={() => setMode("")} />;
+  if (mode === "move")
+    panel = (
+      <div className="mt-3 flex flex-wrap gap-2">
         <select
-          className="rounded border border-line bg-bg px-1 py-0.5 text-xs text-muted"
+          className="input w-auto min-w-0 flex-1"
+          autoFocus
           value=""
-          onChange={(e) => e.target.value && apply({ type: "move_task", goalId: g.id, taskId: task.id, toPhaseId: e.target.value })}
+          onChange={(e) => { if (e.target.value && !apply({ type: "move_task", goalId: g.id, taskId: task.id, toPhaseId: e.target.value })) setMode(""); }}
           aria-label={`Move ${task.title} to another phase`}
         >
           <option value="">Move to phase…</option>
           {g.roadmap.modules.map((x, i) => (i === phaseIndex ? null : <option key={x.id} value={x.id}>{i + 1}. {x.title}</option>))}
         </select>
-      )}
-      {editable && !done && <button type="button" className="hover:text-bad" onClick={() => apply({ type: "remove_task", goalId: g.id, taskId: task.id })} aria-label={`Remove ${task.title}`}>Remove</button>}
-    </div>
-  );
+        <button type="button" className="btn btn-quiet btn-sm" onClick={() => setMode("")}>Cancel</button>
+      </div>
+    );
+  return { menu, panel };
 }
 
 /** Skip, move or re-note one session. */
@@ -442,60 +447,11 @@ export function InsertTask({ goal: g, phaseIndex, at, onDone }: { goal: Goal; ph
       }}
     >
       <input className="input min-w-48 flex-1" autoFocus value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="New task, inserted here" aria-label="New task" />
-      <select className="input w-auto" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value as TaskKind })} aria-label="Kind">
-        {TASK_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
-      </select>
+      <KindSelect value={f.kind} onChange={(kind) => setF({ ...f, kind })} />
       <input type="number" min={5} max={600} step={5} className="input w-24" value={f.minutes} onChange={(e) => setF({ ...f, minutes: Number(e.target.value) || 5 })} aria-label="Minutes" />
       <button className="btn btn-primary">Insert</button>
       <button type="button" className="btn btn-quiet" onClick={onDone}>Cancel</button>
     </form>
-  );
-}
-
-/** The phases as a list, with a place to insert a new phase between any two. */
-export function PhaseList({ goal: g }: { goal: Goal }) {
-  const { apply } = useStore();
-  const [at, setAt] = useState<number | null>(null);
-  const [title, setTitle] = useState("");
-  const insert = (index: number) => {
-    if (!title.trim()) return;
-    const phase = { id: `p${uid()}`, title: title.trim(), level: "", objective: "", first_principle: "", zpd_scaffold: "", estimated_hours: 0, key_concepts: [], checkpoint: "", resources: [], tasks: [] };
-    if (!apply({ type: "add_phase", goalId: g.id, phase, index })) {
-      setAt(null);
-      setTitle("");
-    }
-  };
-  const slot = (index: number) =>
-    at === index ? (
-      <li key={`slot-${index}`} className="py-2">
-        <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); insert(index); }}>
-          <input className="input min-w-48 flex-1" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder={`New phase ${index + 1}`} aria-label="New phase name" />
-          <button className="btn btn-primary">Insert phase</button>
-          <button type="button" className="btn btn-quiet" onClick={() => setAt(null)}>Cancel</button>
-        </form>
-      </li>
-    ) : (
-      <li key={`slot-${index}`} className="flex justify-center">
-        <button type="button" className="rounded-full px-3 py-0.5 text-xs text-faint transition hover:bg-panel-2 hover:text-ink" onClick={() => { setTitle(""); setAt(index); }}>
-          + Insert a phase here
-        </button>
-      </li>
-    );
-  return (
-    <section className="card mt-6" aria-label="Phases">
-      <h2 className="mb-2 text-base font-medium">Phases</h2>
-      <ul>
-        {slot(0)}
-        {g.roadmap.modules.flatMap((m, i) => [
-          <li key={m.id} className="flex items-center gap-3 rounded-lg px-2 py-2 text-sm hover:bg-panel-2">
-            <span className="w-6 shrink-0 text-muted">{i + 1}.</span>
-            <Link href={`/goals/${g.id}/phase/${i + 1}`} className="min-w-0 flex-1 truncate hover:underline">{m.title}</Link>
-            <span className="shrink-0 text-xs text-muted">{m.tasks.length} task{m.tasks.length === 1 ? "" : "s"}{(g.materials ?? []).some((x) => x.phaseId === m.id) ? " · materials" : ""}</span>
-          </li>,
-          slot(i + 1),
-        ])}
-      </ul>
-    </section>
   );
 }
 

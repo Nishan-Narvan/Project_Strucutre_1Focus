@@ -41,8 +41,17 @@ export function Timeline({ date, className = "h-[68vh]", extra }: { date: string
   const isToday = date === today();
   const next = nextBlock(study, date, now);
   const scroller = useRef<HTMLDivElement>(null);
+  const [focus, setFocus] = useState<string | null>(null);
 
   useEffect(() => {
+    // Opened from "See in calendar": go to that session
+    const asked = new URLSearchParams(window.location.search).get("session");
+    const block = asked ? study.find((b) => b.session.id === asked) : undefined;
+    if (block) {
+      setFocus(block.session.id);
+      scroller.current?.scrollTo({ top: Math.max(0, block.start - 60) * PX });
+      return;
+    }
     const target = isToday ? Math.max(0, now - 90) : 6 * 60 + 30;
     scroller.current?.scrollTo({ top: target * PX });
     // scroll only when the date changes, not every minute
@@ -77,7 +86,7 @@ export function Timeline({ date, className = "h-[68vh]", extra }: { date: string
           <StudyCard
             key={b.session.id + i}
             b={b}
-            current={next?.session.id === b.session.id}
+            current={next?.session.id === b.session.id || focus === b.session.id}
             onComplete={(note) => completeSession(b.goal.id, b.session.id, note)}
             onReopen={() => reopenSession(b.goal.id, b.session.id)}
           />

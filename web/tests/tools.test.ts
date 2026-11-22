@@ -166,8 +166,9 @@ test("set_roadmap writes a roadmap for an empty goal, and replacing one keeps id
   assert.ok(keptDone && ng.sessions.some((x) => x.done), "finished work on kept tasks remains");
   assert.match(bad(d, "set_roadmap", { goal_id: g.id, phases: [] }), /at least one phase/);
   assert.match(bad(d, "set_roadmap", { goal_id: g.id, phases: [{ title: "x", tasks: [{ title: "t", minutes: 2 }] }] }), /between 5 and 600/);
-  const many = Array.from({ length: 13 }, (_, i) => ({ title: `t${i}`, minutes: 20 }));
-  assert.match(bad(d, "set_roadmap", { goal_id: g.id, phases: [{ title: "Big", tasks: many }] }), /limit is 12/);
+  // No limit on tasks in a phase
+  const many = Array.from({ length: 30 }, (_, i) => ({ title: `t${i}`, minutes: 20 }));
+  assert.equal(call(d, "set_roadmap", { goal_id: g.id, phases: [{ title: "Big", tasks: many }] }).state.goals[0].roadmap.modules[0].tasks.length, 30);
 });
 
 test("phases: create, update, reorder, delete (delete blocked when locked)", () => {
@@ -214,7 +215,9 @@ test("tasks: add, update, move, reorder, delete; limits and bad input", () => {
   assert.match(bad(s, "reorder_tasks", { goal_id: g.id, phase_id: 1, order: ["a"] }), /exactly once|every task/);
   let full = s;
   for (let i = s.goals[2].roadmap.modules[0].tasks.length; i < 12; i++) full = call(full, "add_task", { goal_id: g.id, phase: 1, title: `fill ${i}`, minutes: 10 }).state;
-  assert.match(refused(full, "add_task", { goal_id: g.id, phase: 1, title: "13th", minutes: 10 }), /12 tasks, the limit/);
+  // No limit on tasks in a phase: a 13th is added
+  full = call(full, "add_task", { goal_id: g.id, phase: 1, title: "13th", minutes: 10 }).state;
+  assert.equal(full.goals[2].roadmap.modules[0].tasks.length, 13);
 });
 
 test("bulk_update_roadmap applies all changes or none", () => {
@@ -226,10 +229,9 @@ test("bulk_update_roadmap applies all changes or none", () => {
   assert.ok(r.state.goals[2].roadmap.modules[1].tasks.some((x) => x.title === "Added"));
   assert.match(bad(s, "bulk_update_roadmap", { goal_id: g.id, changes: [{ action: "update_task", task_id: first.id, title: "ok" }, { action: "fly" }] }), /Change 2: unknown action/);
   // A refusal in the middle stops the whole batch
-  let full = s;
-  for (let i = g.roadmap.modules[0].tasks.length; i < 12; i++) full = call(full, "add_task", { goal_id: g.id, phase: 1, title: `f${i}`, minutes: 10 }).state;
-  const msg = refused(full, "bulk_update_roadmap", { goal_id: g.id, changes: [{ action: "update_task", task_id: first.id, title: "Should not stick" }, { action: "add_task", phase: 1, title: "over", minutes: 10 }] });
-  assert.match(msg, /Change 2 of 2.*Nothing was saved/);
+  // Editing a task that an earlier change deleted fails when applied, so none of the changes are kept
+  const msg = refused(s, "bulk_update_roadmap", { goal_id: g.id, changes: [{ action: "update_task", task_id: first.id, title: "Should not stick" }, { action: "delete_task", task_id: first.id }, { action: "update_task", task_id: first.id, title: "Again" }] });
+  assert.match(msg, /Change 3 of 3.*Nothing was saved/);
 });
 
 // ------------------------------------------------------------ progress

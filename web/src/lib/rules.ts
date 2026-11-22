@@ -8,7 +8,8 @@ export const RULES = {
   maxDailyHours: 6,
   /** After this many days a roadmap is locked: tasks can be added, never removed. */
   editWindowDays: 7,
-  maxTasksPerModule: 12,
+  /** 0 = no limit on tasks in a phase (the person asked for none). */
+  maxTasksPerModule: 0,
 };
 
 /** The limits in force: the person's own settings, falling back to the defaults above. */
@@ -18,7 +19,8 @@ export function limitsOf(state?: Pick<AppState, "settings"> | null): Limits {
   return {
     maxActiveGoals: n(o.maxActiveGoals, RULES.maxActiveGoals),
     maxDailyHours: n(o.maxDailyHours, RULES.maxDailyHours),
-    maxTasksPerModule: n(o.maxTasksPerModule, RULES.maxTasksPerModule),
+    // No limit on tasks a phase any more; an old saved setting is ignored
+    maxTasksPerModule: RULES.maxTasksPerModule,
     editWindowDays: n(o.editWindowDays, RULES.editWindowDays),
   };
 }

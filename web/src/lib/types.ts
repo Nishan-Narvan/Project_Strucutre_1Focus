@@ -1,6 +1,14 @@
 // @reviewed 2026-10-25
 export type SourceType = "reddit" | "youtube" | "docs" | "course" | "article" | "book" | "other";
-export type TaskKind = "learn" | "practice" | "project" | "review" | "quiz";
+export type BuiltinKind = "learn" | "practice" | "project" | "review" | "quiz";
+/** A built-in kind, or the id of a category the person made (settings.taskKinds). */
+export type TaskKind = BuiltinKind | (string & {});
+/** A task category the person added, with its own colour. */
+export interface CustomKind {
+  id: string;
+  label: string;
+  color: string; // #rrggbb
+}
 export type ProviderId = "groq" | "gemini" | "openrouter" | "openai" | "anthropic" | "custom";
 
 export interface Resource {
@@ -234,6 +242,8 @@ export interface Settings {
   defaultTaskMinutes?: number;
   /** A calendar feed is connected (its secret address is kept encrypted on the server). */
   calendar?: { name: string };
+  /** Task categories the person added beside the built-in five. */
+  taskKinds?: CustomKind[];
   /** Which sections the Goals page shows, in order. */
   dashboard?: DashboardWidget[];
 }

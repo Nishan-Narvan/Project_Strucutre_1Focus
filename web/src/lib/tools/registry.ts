@@ -81,7 +81,7 @@ const TASK_SCHEMA: Schema = {
     id: S("Keep an existing task's id to keep its finished work. Leave out for a new task."),
     title: S("What to do, as a short instruction."),
     minutes: I("How long it takes, 5 to 600."),
-    kind: E("Type of work.", TASK_KINDS),
+    kind: S("Type of work: learn, practice, project, review or quiz, or the id of one of the person's own categories (get_settings shows task_kinds)."),
     detail: S("One or two lines on exactly what to do and how to know it is done."),
   },
   required: ["title", "minutes"],
@@ -583,7 +583,7 @@ tool({
   name: "add_task",
   kind: "write",
   description: "Add one task to a phase of a goal's roadmap, at a position (default: the end of the phase). The goal is re-planned from today.",
-  params: { goal_id: GOAL_ID, phase: S("Phase id or number (1 = first)."), title: S("What to do."), minutes: I("Length in minutes, 5 to 600."), kind: E("Type of work.", TASK_KINDS), detail: S("One line on what to do."), position: I("1-based position in the phase; default last.") },
+  params: { goal_id: GOAL_ID, phase: S("Phase id or number (1 = first)."), title: S("What to do."), minutes: I("Length in minutes, 5 to 600."), kind: S("Type of work: learn, practice, project, review or quiz, or the id of one of the person's own categories (get_settings shows task_kinds)."), detail: S("One line on what to do."), position: I("1-based position in the phase; default last.") },
   required: ["goal_id", "phase", "title", "minutes"],
   run: (a, ctx) => {
     const g = findGoal(ctx.state, a.req("goal_id"));
@@ -612,7 +612,7 @@ tool({
       ...(a.has("title") ? { title: a.req("title", 160) } : {}),
       ...(a.has("detail") ? { detail: a.str("detail", { max: 600 }) as string } : {}),
       ...(a.has("minutes") ? { minutes: a.num("minutes", { min: 5, max: 600, int: true }) as number } : {}),
-      ...(a.has("kind") ? { kind: a.oneOf("kind", TASK_KINDS) as TaskKind } : {}),
+      ...(a.has("kind") ? { kind: (a.str("kind", { max: 24 }) ?? "practice").toLowerCase() as TaskKind } : {}),
     };
     if (!Object.keys(patch).length) throw new ToolInputError("Nothing to change: give at least one field.");
     return { ops: [{ type: "update_task", goalId: g.id, taskId: task.id, patch }], summary: `Change ${Object.keys(patch).join(", ")} of task "${task.title}".`, result: { updated: true }, label: `Updated task ${task.title}` };
@@ -1071,11 +1071,10 @@ tool({
   name: "update_settings",
   kind: "write",
   description:
-    "Change settings: limits (max_active_goals, max_daily_hours, max_tasks_per_phase, edit_window_days; 0 days = roadmaps never lock), auto_apply_safe_changes, week_start, default_task_minutes, dashboard (which sections the Goals page shows, in order), theme. Changing a limit always needs confirmation: limits exist to keep the person focused.",
+    "Change settings: limits (max_active_goals, max_daily_hours, edit_window_days; 0 days = roadmaps never lock), auto_apply_safe_changes, week_start, default_task_minutes, dashboard (which sections the Goals page shows, in order), theme. Changing a limit always needs confirmation: limits exist to keep the person focused.",
   params: {
     max_active_goals: I("Most goals active at once."),
     max_daily_hours: N("Most study hours per day across goals."),
-    max_tasks_per_phase: I("Most tasks in one phase."),
     edit_window_days: I("Days after creation during which tasks and phases can be removed; 0 = never lock."),
     auto_apply_safe_changes: B("Let assistants make ordinary changes without asking each time. Deletions always ask."),
     week_start: E("First day of the week.", ["mon", "sun"]),
@@ -1087,7 +1086,6 @@ tool({
     const limits = {
       ...(a.has("max_active_goals") ? { maxActiveGoals: a.num("max_active_goals", { min: 1, max: 20, int: true }) } : {}),
       ...(a.has("max_daily_hours") ? { maxDailyHours: a.num("max_daily_hours", { min: 0.5, max: 24 }) } : {}),
-      ...(a.has("max_tasks_per_phase") ? { maxTasksPerModule: a.num("max_tasks_per_phase", { min: 1, max: 50, int: true }) } : {}),
       ...(a.has("edit_window_days") ? { editWindowDays: a.num("edit_window_days", { min: 0, max: 365, int: true }) } : {}),
     };
     const dashboard = a.has("dashboard") ? (a.list<string>("dashboard") ?? []).map((w) => {

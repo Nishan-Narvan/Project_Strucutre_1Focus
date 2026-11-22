@@ -169,7 +169,7 @@ export function buildMemoryFile(s: AppState, t: string, opts: { goalId?: string;
   L.push("This is the complete, factual record of the person's learning goal(s) from Where MyLife: who they are and what limits their time, each goal's roadmap (done and remaining), every day's work since the goal was created, every change to the plan, the materials they have, and their KPIs. Treat it as your memory of them and continue coaching from where it ends. Use only these facts; if something is not here, say you don't know. The raw JSON at the end is the same data, exact.", "");
 
   L.push("## The person", "");
-  L.push(`- Study limits: at most ${lim.maxActiveGoals} active goals and ${lim.maxDailyHours} h of study a day; at most ${lim.maxTasksPerModule} tasks a phase`);
+  L.push(`- Study limits: at most ${lim.maxActiveGoals} active goals and ${lim.maxDailyHours} h of study a day; no limit on tasks a phase`);
   L.push(`- Active goals now: ${s.goals.filter(isActive).length}${s.goals.some((g) => !isActive(g)) ? `; paused or archived: ${s.goals.filter((g) => !isActive(g)).map((g) => g.title).join(", ")}` : ""}`);
   L.push(`- Routines (study is planned around these): ${s.routines.map((r) => `${r.title} ${r.start}-${r.end} ${days(r.days)}`).join("; ") || "none"}`);
   const ahead = s.events.filter((e) => e.date >= t).slice(0, 15);

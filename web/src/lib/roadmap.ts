@@ -1,4 +1,4 @@
-import type { Module, Resource, Roadmap, SourceType, Task, TaskKind } from "./types";
+import type { BuiltinKind, Module, Resource, Roadmap, SourceType, Task } from "./types";
 import { uid } from "./date";
 
 /**
@@ -8,7 +8,9 @@ import { uid } from "./date";
  * explains exactly what is wrong when the input cannot be used.
  */
 
-export const TASK_KINDS: TaskKind[] = ["learn", "practice", "project", "review", "quiz"];
+export const TASK_KINDS: BuiltinKind[] = ["learn", "practice", "project", "review", "quiz"];
+/** Ids of categories the person makes: lowercase letters, digits and dashes. */
+export const KIND_ID = /^[a-z0-9][a-z0-9-]{0,23}$/;
 const SOURCES: SourceType[] = ["reddit", "youtube", "docs", "course", "article", "book", "other"];
 export const MAX_PHASES = 20;
 export const MAX_TASKS_TOTAL = 200;
@@ -49,7 +51,7 @@ export function cleanTask(input: TaskInput, where: string, defaultMinutes = 45):
   if (!title) throw new RoadmapError(`${where}: every task needs a title.`);
   const minutes = Math.round(Number(input.minutes ?? defaultMinutes));
   if (!Number.isFinite(minutes) || minutes < 5 || minutes > 600) throw new RoadmapError(`${where} "${title}": minutes must be between 5 and 600.`);
-  const kind = TASK_KINDS.includes(input.kind as TaskKind) ? (input.kind as TaskKind) : "practice";
+  const kind = typeof input.kind === "string" && KIND_ID.test(input.kind) ? input.kind : "practice";
   return { id: typeof input.id === "string" && input.id ? input.id : uid() + uid(), title, minutes, kind, detail: str(input.detail, 600) };
 }
 
@@ -73,7 +75,7 @@ export function cleanPhase(input: PhaseInput, index: number, maxTasks: number, e
   if (!title) throw new RoadmapError(`${where}: every phase needs a title.`);
   const rawTasks = input.tasks === undefined && existing ? existing.tasks : input.tasks;
   if (!Array.isArray(rawTasks)) throw new RoadmapError(`${where} "${title}": tasks must be a list.`);
-  if (rawTasks.length > maxTasks) throw new RoadmapError(`${where} "${title}" has ${rawTasks.length} tasks; the limit is ${maxTasks} a phase. Split it into two phases.`);
+  if (maxTasks && rawTasks.length > maxTasks) throw new RoadmapError(`${where} "${title}" has ${rawTasks.length} tasks; the limit is ${maxTasks} a phase. Split it into two phases.`);
   const tasks = rawTasks.map((t, i) => cleanTask((t ?? {}) as TaskInput, `${where}, task ${i + 1}`, defaultMinutes));
   return {
     id: (typeof input.id === "string" && input.id) || existing?.id || `p${uid()}`,

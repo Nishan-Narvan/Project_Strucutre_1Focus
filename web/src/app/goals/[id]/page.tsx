@@ -7,11 +7,12 @@ import { daysBetween, fmtDate, fmtDuration, today } from "@/lib/date";
 import { lastSessionDate, overdue, progress } from "@/lib/schedule";
 import { isEditable, limitsOf, lockDate } from "@/lib/rules";
 import { ModuleBar } from "@/components/ui";
-import { GoalEditor, MemoryFileButtons, NoRoadmap, PhaseList, StatusBanner, StudyLog } from "@/components/Editors";
+import { GoalEditor, MemoryFileButtons, NoRoadmap, StatusBanner, StudyLog } from "@/components/Editors";
 import { MaterialsPanel } from "@/components/Materials";
 import { NotionNotes } from "@/components/NotionView";
 import { KpiPanel } from "@/components/Kpis";
 import { Road } from "@/components/Road";
+import { PhaseList } from "@/components/PhaseList";
 
 export default function GoalPage() {
   const { id } = useParams<{ id: string }>();

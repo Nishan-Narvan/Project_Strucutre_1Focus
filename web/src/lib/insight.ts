@@ -180,7 +180,7 @@ export function snapshotText(state: AppState, t: string) {
   const L: string[] = [];
   L.push(`TODAY: ${t} (${WEEKDAYS[weekday(t)]})`);
   const lim = limitsOf(state);
-  L.push(`APP LIMITS: at most ${lim.maxActiveGoals} active goals; at most ${lim.maxDailyHours}h of study a day across active goals; at most ${lim.maxTasksPerModule} tasks a phase; tasks and phases can be removed during the first ${lim.editWindowDays || "unlimited"} days of a goal${lim.editWindowDays ? "" : " (never locks)"}.`);
+  L.push(`APP LIMITS: at most ${lim.maxActiveGoals} active goals; at most ${lim.maxDailyHours}h of study a day across active goals; no limit on tasks a phase; tasks and phases can be removed during the first ${lim.editWindowDays || "unlimited"} days of a goal${lim.editWindowDays ? "" : " (never locks)"}.`);
   L.push(`SETTINGS: assistants ${state.settings.autoApplySafe ? "may make ordinary changes without asking" : "ask before every change"}; deletions always need confirmation. Week starts ${state.settings.weekStart === "sun" ? "Sunday" : "Monday"}.`);
   L.push("");
   L.push("OVERALL");

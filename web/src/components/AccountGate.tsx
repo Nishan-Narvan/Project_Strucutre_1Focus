@@ -72,6 +72,9 @@ export function AccountGate() {
           </svg>
           Sign in with Google
         </a>
+        {process.env.NODE_ENV === "development" && (
+          <a href="/auth/dev" className="btn btn-quiet mt-2 text-sm">Local sign-in (development only)</a>
+        )}
         {authError && <p className="mt-4 text-sm text-bad" role="alert">{authError}</p>}
       </>,
     );

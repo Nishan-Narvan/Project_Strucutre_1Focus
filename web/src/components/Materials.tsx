@@ -112,14 +112,14 @@ export function TaskMaterials({ goal: g, taskId }: { goal: Goal; taskId: string 
   const list = (g.materials ?? []).filter((m) => m.taskId === taskId);
   if (!list.length) return null;
   return (
-    <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+    <span className="flex flex-wrap gap-1.5 text-xs">
       {list.map((m) =>
         isLocalPath(m.url) ? (
-          <span key={m.id} className="text-muted" title={m.url}>{MATERIAL_LABEL[m.kind]}: {m.title}</span>
+          <span key={m.id} className="rounded-md bg-panel-2 px-2 py-0.5 text-muted" title={m.url}><span className="text-k-learn">{MATERIAL_LABEL[m.kind]}</span> {m.title}</span>
         ) : (
-          <a key={m.id} href={m.url} target="_blank" rel="noreferrer" className="text-muted underline decoration-faint underline-offset-2 hover:text-ink">{MATERIAL_LABEL[m.kind]}: {m.title}</a>
+          <a key={m.id} href={m.url} target="_blank" rel="noreferrer" title={m.url} className="rounded-md bg-panel-2 px-2 py-0.5 text-ink/85 transition-colors hover:bg-panel-2/60 hover:text-ink"><span className="text-k-learn">{MATERIAL_LABEL[m.kind]}</span> {m.title} ↗</a>
         ),
       )}
-    </p>
+    </span>
   );
 }

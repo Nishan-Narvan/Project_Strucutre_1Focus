@@ -2,21 +2,24 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useStore } from "@/lib/store";
-import { fmtDate, fmtDuration, today } from "@/lib/date";
-import { progress, taskSessions } from "@/lib/schedule";
-import { limitsOf } from "@/lib/rules";
-import { PhaseEditor, TaskControls } from "@/components/Editors";
-import { MaterialsPanel, TaskMaterials } from "@/components/Materials";
+import { addDays, daysBetween, fmtDate, fmtDuration, today } from "@/lib/date";
+import { overdue, progress, taskSessions } from "@/lib/schedule";
+import { PhaseEditor } from "@/components/Editors";
+import { MaterialsPanel } from "@/components/Materials";
 import { NotionNotes } from "@/components/NotionView";
-import { CompleteButton, fmtDoneAt, KindTag, OnTop, SourceBadge } from "@/components/ui";
-import type { Goal, TaskKind } from "@/lib/types";
+import { WeekDates } from "@/components/WeekDates";
+import { PhaseTitle } from "@/components/PhaseList";
+import { TaskList } from "@/components/TaskList";
+import { SourceBadge } from "@/components/ui";
+import { splitPhaseTitle } from "@/lib/phaseTitle";
+import type { Goal } from "@/lib/types";
 
-/** Full-screen view of one phase: how complete it is first, then the work. */
+/** One phase: where it stands in a few lines, then its tasks as a list of cards. */
 export default function PhasePage() {
   const { id, n } = useParams<{ id: string; n: string }>();
-  const { state, completeTask, reopenTask } = useStore();
+  const { state, reschedule } = useStore();
   const g = state.goals.find((x) => x.id === id);
   const index = Number(n) - 1;
   const m = g?.roadmap.modules[index];
@@ -29,146 +32,105 @@ export default function PhasePage() {
       </p>
     );
 
-  const t = today();
   const p = progress(g);
   const mp = p.modules[index];
   const total = g.roadmap.modules.length;
   const current = index === p.currentModule && mp.ratio < 1;
   const done = mp.ratio >= 1;
-  const status = (taskId: string) => {
+  const isDone = (taskId: string) => {
     const s = taskSessions(g, taskId);
     return s.length > 0 && s.every((x) => x.done);
   };
-  const doneTasks = m.tasks.filter((task) => status(task.id)).length;
-  const nextTask = m.tasks.find((task) => !status(task.id));
-  const remaining = g.sessions.filter((s) => s.moduleIndex === index && !s.done).map((s) => s.date).sort();
-  const finishOn = remaining[remaining.length - 1];
+  const doneTasks = m.tasks.filter((task) => isDone(task.id)).length;
+  const nextTask = m.tasks.find((task) => !isDone(task.id));
+  const mine = g.sessions.filter((s) => s.moduleIndex === index);
+  const remaining = mine.filter((s) => !s.done).map((s) => s.date).sort();
+  const finishedOn = mine.filter((s) => s.doneAt).map((s) => s.doneAt!.slice(0, 10)).sort().pop();
+  const finish = done ? finishedOn : remaining[remaining.length - 1];
+  const expected = expectedFinish(g, index);
+  const late = !!finish && !!expected && finish > expected;
+  const pct = Math.round(mp.ratio * 100);
+  const missed = overdue(g, today()).filter((s) => s.moduleIndex === index);
 
   return (
     <>
-      <nav className="mb-6 flex flex-wrap items-center justify-between gap-3 text-sm">
-        <Link href={`/goals/${g.id}`} className="text-muted hover:text-ink">
-          {g.title}, all phases
-        </Link>
-        <div className="flex items-center gap-1.5" aria-label="Phases">
-          {g.roadmap.modules.map((x, i) => (
-            <Link
-              key={x.id}
-              href={`/goals/${g.id}/phase/${i + 1}`}
-              aria-label={`Phase ${i + 1}: ${x.title}`}
-              aria-current={i === index ? "page" : undefined}
-              className={`h-2 rounded-full transition-all ${i === index ? "w-6 bg-ink" : p.modules[i].ratio >= 1 ? "w-2 bg-muted hover:bg-ink" : "w-2 bg-line hover:bg-muted"}`}
-            />
-          ))}
-          <span className="ml-2 hidden text-xs text-faint sm:inline">Swipe or use ← → keys</span>
-        </div>
-      </nav>
+      <Link href={`/goals/${g.id}`} className="mb-4 inline-block text-sm text-muted hover:text-ink">
+        ← {g.title}, all weeks
+      </Link>
 
-      {index > 0 && (
-        <SideButton dir="prev" href={`/goals/${g.id}/phase/${index}`} label={`Previous phase: ${g.roadmap.modules[index - 1].title}`} />
-      )}
-      {index < total - 1 && (
-        <SideButton dir="next" href={`/goals/${g.id}/phase/${index + 2}`} label={`Next phase: ${g.roadmap.modules[index + 1].title}`} />
-      )}
-
-      {/* The screen's one question: how complete is this phase? */}
-      <section className="grid min-h-[calc(100dvh-170px)] items-center gap-10 px-10 md:px-12 lg:grid-cols-[1fr_auto]">
-        <div className="max-w-xl">
-          <p className={`text-sm ${current ? "crystal-text" : "text-muted"}`}>
-            Phase {index + 1} of {total}, {done ? "complete" : current ? "in progress" : index > p.currentModule ? "up next on the road" : "not started"}
-          </p>
-          <h1 className="mt-2 font-serif text-6xl leading-[1.02] tracking-tight md:text-7xl">{m.title}</h1>
-          <p className="mt-5 text-lg leading-relaxed text-ink/85">{m.objective}</p>
-          <PhaseEditor key={m.id} goal={g} index={index} />
-
-          <dl className="mt-10 grid grid-cols-2 gap-x-8 gap-y-6 sm:grid-cols-3">
-            <div>
-              <dt className="text-sm text-muted">Tasks done</dt>
-              <dd className="font-serif text-4xl">{doneTasks}<span className="text-faint">/{m.tasks.length}</span></dd>
-            </div>
-            <div>
-              <dt className="text-sm text-muted">Time put in</dt>
-              <dd className="font-serif text-4xl">{fmtDuration(mp.done)}</dd>
-              <dd className="text-xs text-faint">of {fmtDuration(mp.total)}</dd>
-            </div>
-            <div>
-              <dt className="text-sm text-muted">{done ? "Finished" : "Finishes"}</dt>
-              <dd className="font-serif text-4xl">{done ? "Done" : finishOn ? fmtDate(finishOn, { day: "numeric", month: "short" }) : "–"}</dd>
-            </div>
-          </dl>
-
-          {/* one segment per task: the phase's work at a glance */}
-          <div className="mt-8 flex gap-1" aria-hidden>
-            {m.tasks.map((task) => (
-              <span
-                key={task.id}
-                title={task.title}
-                className={`h-2 rounded-full ${status(task.id) ? "bg-ink" : task.id === nextTask?.id && current ? "crystal-dot" : "bg-line"}`}
-                style={{ flex: task.minutes }}
+      {/* This week, in its own panel: switch weeks at the top, then where it stands */}
+      <section
+        className={`mx-auto max-w-4xl rounded-2xl border p-5 sm:p-7 ${done ? "border-done/30" : current ? "border-crystal/30" : "border-line"}`}
+        style={{ background: `color-mix(in srgb, var(${done ? "--done" : current ? "--crystal" : "--muted"}) 6%, var(--s2))` }}
+      >
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <WeekStep goalId={g.id} to={index - 1} total={total} dir="prev" label={index > 0 ? splitPhaseTitle(g.roadmap.modules[index - 1].title).label ?? `Week ${index}` : ""} />
+          <div className="flex flex-wrap items-center justify-center gap-1.5" aria-label="Weeks">
+            {g.roadmap.modules.map((x, i) => (
+              <Link
+                key={x.id}
+                href={`/goals/${g.id}/phase/${i + 1}`}
+                aria-label={`Week ${i + 1}: ${x.title}`}
+                aria-current={i === index ? "page" : undefined}
+                className={`h-2 rounded-full transition-[width,background-color] ${i === index ? "w-6 bg-ink" : p.modules[i].ratio >= 1 ? "w-2 bg-done hover:bg-ink" : i === p.currentModule ? "w-2 bg-crystal hover:bg-ink" : "w-2 bg-line hover:bg-muted"}`}
               />
             ))}
           </div>
-
-          {nextTask && (
-            <p className="mt-6 text-[15px]">
-              <span className="text-muted">Next: </span>
-              <span className={current ? "crystal-text" : ""}>{nextTask.title}</span>
-            </p>
-          )}
-          <a href="#work" className="btn btn-primary mt-8">See the tasks</a>
+          <WeekStep goalId={g.id} to={index + 1} total={total} dir="next" label={index < total - 1 ? splitPhaseTitle(g.roadmap.modules[index + 1].title).label ?? `Week ${index + 2}` : ""} />
         </div>
 
-        <Ring ratio={mp.ratio} current={current} />
+        <div className="flex flex-wrap items-center gap-2 text-[13px]">
+          <span className="font-medium">{splitPhaseTitle(m.title).label ?? `Week ${index + 1}`}</span>
+          <span className="text-muted">{index + 1} of {total}</span>
+          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${done ? "bg-done/15 text-done" : current ? "bg-crystal/15 text-crystal" : "bg-panel text-muted"}`}>
+            {done ? "Complete" : current ? "In progress" : index > p.currentModule ? "Up next" : "Not started"}
+          </span>
+          <WeekDates goal={g} index={index} />
+        </div>
+
+        {/* the title, set apart by its border */}
+        <h1 className={`mt-3 border-l-4 pl-4 ${done ? "border-done" : current ? "border-crystal" : "border-muted"}`} aria-label={m.title}>
+          <PhaseTitle title={m.title} size="hero" />
+        </h1>
+
+        {m.objective && (
+          <div className="mt-5 rounded-xl border border-line bg-bg/40 px-4 py-3">
+            <p className="text-xs font-medium text-muted">This week&apos;s aim</p>
+            <p className="mt-1 text-[15px] leading-relaxed text-ink/90">{m.objective}</p>
+          </div>
+        )}
+        <PhaseEditor key={m.id} goal={g} index={index} />
+
+        <dl className="mt-6 grid grid-cols-3 divide-x divide-line rounded-lg border border-line bg-bg/40 text-sm">
+          <Stat label="Tasks done"><span className={doneTasks === m.tasks.length && m.tasks.length ? "text-done" : ""}>{doneTasks}</span><span className="text-faint">/{m.tasks.length}</span></Stat>
+          <Stat label="Time put in">{fmtDuration(mp.done)}<span className="text-faint"> / {fmtDuration(mp.total)}</span></Stat>
+          <Stat label={done ? "Finished / expected" : "Finishes / expected"}>
+            <span className={late ? "text-late" : ""}>{finish ? fmtDate(finish, { day: "numeric", month: "short" }) : "–"}</span>
+            <span className="text-faint"> / {expected ? fmtDate(expected, { day: "numeric", month: "short" }) : "–"}</span>
+          </Stat>
+        </dl>
+
+        <ProgressLine pct={pct} current={current} done={done} left={mp.total - mp.done} tasksLeft={m.tasks.length - doneTasks} />
+
+        {nextTask && (
+          <button type="button" onClick={() => goToTask(nextTask.id)} className="group mt-4 flex items-center gap-2 text-left text-[15px]">
+            <span className={`h-2 w-2 shrink-0 rounded-full ${current ? "crystal-dot" : "bg-muted"}`} aria-hidden />
+            <span className="text-muted">Next:</span>
+            <span className={`underline decoration-transparent underline-offset-4 transition-colors group-hover:decoration-current ${current ? "crystal-text" : ""}`}>{nextTask.title}</span>
+          </button>
+        )}
+        {missed.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+            <span className="text-late">
+              {missed.length} session{missed.length > 1 ? "s" : ""} missed in this week ({fmtDuration(missed.reduce((a, s) => a + s.minutes, 0))})
+            </span>
+            <button type="button" className="btn btn-sm" onClick={() => reschedule(g.id)}>Reschedule from today</button>
+          </div>
+        )}
       </section>
 
-      <section id="work" className="grid scroll-mt-8 gap-6 pt-10 lg:grid-cols-[1.4fr_1fr]">
-        <div className="card">
-          <h2 className="mb-1 text-lg font-medium">Tasks</h2>
-          <p className="mb-4 text-xs text-muted">Completing one asks what you learned; the note and time stay on the task.</p>
-          <ol className="space-y-1">
-            {m.tasks.map((task, position) => {
-              const sessions = taskSessions(g, task.id);
-              const isDone = status(task.id);
-              const doneAt = sessions.filter((s) => s.doneAt).map((s) => s.doneAt!).sort().pop();
-              const upcoming = sessions.filter((s) => !s.done);
-              const isNext = current && task.id === nextTask?.id;
-              return (
-                <li key={task.id} className={`flex gap-3 rounded-lg px-3 py-3 ${isNext ? "crystal-ring bg-panel-2" : ""}`}>
-                  <CompleteButton done={isDone} current={isNext} title={task.title} onComplete={(note) => completeTask(g.id, task.id, note)} onReopen={() => reopenTask(g.id, task.id)} />
-                  <div className="min-w-0 flex-1 text-sm">
-                    <div className="flex flex-wrap items-baseline gap-x-2">
-                      <span className={isDone ? "text-muted line-through" : isNext ? "crystal-text" : ""}>{task.title}</span>
-                      <KindTag kind={task.kind} />
-                      <span className="text-xs text-faint">{fmtDuration(task.minutes)}</span>
-                    </div>
-                    {task.detail && <p className="mt-0.5 text-xs text-muted">{task.detail}</p>}
-                    {isDone && doneAt && <p className="mt-1.5 text-xs text-ink/70">Completed {fmtDoneAt(doneAt)}</p>}
-                    {sessions.filter((s) => s.done && s.note).map((s) => (
-                      <p key={s.id} className="mt-1 border-l border-faint pl-2 text-xs italic text-ink/75">{s.note}</p>
-                    ))}
-                    {!isDone && upcoming.length > 0 && (
-                      <p className="mt-1 text-xs text-muted">
-                        {upcoming.map((s, i) => (
-                          <span key={s.id}>
-                            {i > 0 && ", "}
-                            <Link href={`/day/${s.date}`} className={`hover:text-ink ${s.date < t ? "text-bad" : ""}`}>{s.date === t ? "today" : fmtDate(s.date)}</Link>
-                          </span>
-                        ))}
-                      </p>
-                    )}
-                    <TaskMaterials goal={g} taskId={task.id} />
-                    <TaskControls key={`${task.id}-${task.minutes}-${task.title}`} goal={g} task={task} phaseIndex={index} position={position} done={isDone} />
-                  </div>
-
-                </li>
-              );
-            })}
-          </ol>
-          <AddTask goal={g} index={index} />
-        </div>
-        <div className="lg:col-span-2 lg:row-start-2">
-          <NotionNotes key={m.id} goal={g} phaseId={m.id} />
-        </div>
+      <section className="mt-10 grid grid-cols-1 items-start gap-6 lg:px-12 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+        <TaskList goal={g} index={index} current={current} />
 
         <div className="space-y-6">
           {m.notes && (
@@ -177,32 +139,113 @@ export default function PhasePage() {
               <p className="mt-1 whitespace-pre-wrap leading-relaxed">{m.notes}</p>
             </div>
           )}
-          <MaterialsPanel key={m.id} goal={g} phaseId={m.id} />
           <div className="card space-y-4 text-sm">
-            <div><h3 className="text-muted">Built on</h3><p className="mt-0.5">{m.first_principle}</p></div>
-            <div><h3 className="text-muted">Support while you learn</h3><p className="mt-0.5">{m.zpd_scaffold}</p></div>
-            <div><h3 className="text-muted">You&apos;re done when you can</h3><p className="mt-0.5">{m.checkpoint}</p></div>
-            <p className="text-muted">{m.key_concepts.join(", ")}</p>
+            {m.checkpoint && <div><h3 className="text-muted">You&apos;re done when you can</h3><p className="mt-0.5">{m.checkpoint}</p></div>}
+            {m.first_principle && <div><h3 className="text-muted">Built on</h3><p className="mt-0.5">{m.first_principle}</p></div>}
+            {m.zpd_scaffold && <div><h3 className="text-muted">Support while you learn</h3><p className="mt-0.5">{m.zpd_scaffold}</p></div>}
+            {m.key_concepts.length > 0 && <p className="text-muted">{m.key_concepts.join(", ")}</p>}
           </div>
-          <div className="card">
-            <h3 className="mb-3 text-base font-medium">Resources</h3>
-            <ul className="space-y-3">
-              {m.resources.map((r) => (
-                <li key={r.url + r.title} className="flex items-start gap-2.5 text-sm">
-                  <SourceBadge type={r.source_type} />
-                  <div className="min-w-0">
-                    <a href={/^https?:\/\//.test(r.url) ? r.url : undefined} target="_blank" rel="noreferrer" className="underline decoration-faint underline-offset-2 hover:decoration-ink">{r.title}</a>
-                    <span className="ml-1.5 text-xs text-faint">{r.verified ? "found in research" : "not yet verified"}</span>
-                    <p className="text-xs text-muted">{r.why}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <MaterialsPanel key={m.id} goal={g} phaseId={m.id} />
+          {m.resources.length > 0 && (
+            <div className="card">
+              <h3 className="mb-3 text-base font-medium">Resources</h3>
+              <ul className="space-y-3">
+                {m.resources.map((r) => (
+                  <li key={r.url + r.title} className="flex items-start gap-2.5 text-sm">
+                    <SourceBadge type={r.source_type} />
+                    <div className="min-w-0">
+                      <a href={/^https?:\/\//.test(r.url) ? r.url : undefined} target="_blank" rel="noreferrer" className="underline decoration-faint underline-offset-2 hover:decoration-ink">{r.title}</a>
+                      <span className="ml-1.5 text-xs text-faint">{r.verified ? "found in research" : "not yet verified"}</span>
+                      <p className="text-xs text-muted">{r.why}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+        <div className="lg:col-span-2">
+          <NotionNotes key={m.id} goal={g} phaseId={m.id} />
         </div>
       </section>
     </>
   );
+}
+
+function Stat({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="min-w-0 px-3 py-2.5 sm:px-4">
+      <dt className="text-xs text-muted">{label}</dt>
+      <dd className="mt-0.5 tabular-nums">{children}</dd>
+    </div>
+  );
+}
+
+/** The week as a line from start to finish, with a dot where you are and what is left. */
+function ProgressLine({ pct, current, done, left, tasksLeft }: { pct: number; current: boolean; done: boolean; left: number; tasksLeft: number }) {
+  const color = done ? "bg-done" : current ? "bg-crystal" : "bg-ink";
+  return (
+    <div className="mt-6" role="img" aria-label={`${pct}% done, ${tasksLeft} tasks and ${fmtDuration(left)} left`}>
+      <div className="relative h-5">
+        <span className={`absolute top-0 -translate-x-1/2 whitespace-nowrap text-xs font-medium ${done ? "text-done" : current ? "crystal-text" : "text-ink"}`} style={{ left: `clamp(2rem, ${pct}%, calc(100% - 2rem))` }}>
+          {pct}% done
+        </span>
+      </div>
+      <div className="relative h-3">
+        <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-line" />
+        <div className={`absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full ${color}`} style={{ width: `${pct}%` }} />
+        <span
+          className={`absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-bg ${color}`}
+          style={{ left: `${pct}%`, ...(current ? { boxShadow: "0 0 10px var(--glow)" } : {}) }}
+        />
+      </div>
+      <div className="mt-1.5 flex justify-between text-xs text-muted">
+        <span>Start</span>
+        <span>
+          {left > 0 || tasksLeft > 0 ? (
+            <>
+              <span className="text-ink">{tasksLeft}</span> task{tasksLeft === 1 ? "" : "s"} · <span className="text-ink">{fmtDuration(left)}</span> left
+            </>
+          ) : (
+            <span className="text-done">All done</span>
+          )}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Scroll to a task's card and flash it. */
+function goToTask(taskId: string) {
+  const el = document.getElementById(`task-${taskId}`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.animate([{ boxShadow: "0 0 0 3px var(--crystal)" }, { boxShadow: "0 0 0 0 transparent" }], { duration: 1800, easing: "ease-out" });
+}
+
+/** Previous or next week, inside the week panel. */
+function WeekStep({ goalId, to, total, dir, label }: { goalId: string; to: number; total: number; dir: "prev" | "next"; label: string }) {
+  if (to < 0 || to >= total) return <span className="w-24 shrink-0" aria-hidden />;
+  return (
+    <Link
+      href={`/goals/${goalId}/phase/${to + 1}`}
+      className={`btn btn-sm w-24 shrink-0 gap-1 ${dir === "next" ? "justify-end" : "justify-start"}`}
+      aria-label={`${dir === "prev" ? "Previous" : "Next"} week: ${label}`}
+    >
+      {dir === "prev" && <span aria-hidden>←</span>}
+      <span className="truncate">{label}</span>
+      {dir === "next" && <span aria-hidden>→</span>}
+    </Link>
+  );
+}
+
+/** When this phase should be done for the goal to end on its deadline at an even pace. */
+function expectedFinish(g: Goal, index: number) {
+  const mins = g.roadmap.modules.map((m) => m.tasks.reduce((a, t) => a + t.minutes, 0));
+  const all = mins.reduce((a, b) => a + b, 0);
+  if (!all || !g.startDate || !g.deadline) return undefined;
+  const upTo = mins.slice(0, index + 1).reduce((a, b) => a + b, 0);
+  return addDays(g.startDate, Math.round(daysBetween(g.startDate, g.deadline) * (upTo / all)));
 }
 
 /** Previous/next phase with arrow keys and horizontal swipes. */
@@ -250,85 +293,3 @@ function usePhaseNav(base: string | null, index: number, total: number) {
   }, [base, index, total, router]);
 }
 
-function SideButton({ dir, href, label }: { dir: "prev" | "next"; href: string; label: string }) {
-  return (
-    <OnTop>
-      <Link
-        href={href}
-        aria-label={label}
-        title={label}
-        className={`fixed top-1/2 z-30 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full border border-line bg-bg/80 text-ink transition hover:border-muted hover:bg-panel-2 ${
-          dir === "prev" ? "left-2 md:left-[262px]" : "right-2 md:right-4"
-        }`}
-      >
-        <svg viewBox="0 0 16 16" className="h-4 w-4" aria-hidden>
-          <path d={dir === "prev" ? "M10 3 5 8l5 5" : "M6 3l5 5-5 5"} stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </Link>
-    </OnTop>
-  );
-}
-
-/** Large completion ring; the arc glows crystal while the phase is in progress. */
-function Ring({ ratio, current }: { ratio: number; current: boolean }) {
-  const r = 140;
-  const c = 2 * Math.PI * r;
-  return (
-    <div className="relative mx-auto aspect-square w-[min(80vw,380px)]" role="img" aria-label={`${Math.round(ratio * 100)}% complete`}>
-      <svg viewBox="0 0 320 320" className="h-full w-full -rotate-90">
-        <circle cx="160" cy="160" r={r} stroke="var(--color-panel-2)" strokeWidth="14" fill="none" />
-        <circle
-          cx="160"
-          cy="160"
-          r={r}
-          stroke={current ? "var(--color-crystal)" : "var(--color-ink)"}
-          strokeWidth="14"
-          fill="none"
-          strokeLinecap="round"
-          strokeDasharray={`${c * ratio} ${c}`}
-          style={current ? { filter: "drop-shadow(0 0 10px var(--glow))" } : undefined}
-        />
-      </svg>
-      <div className="absolute inset-0 grid place-items-center text-center">
-        <div>
-          <div className={`font-serif text-8xl leading-none ${current ? "crystal-text" : ""}`}>{Math.round(ratio * 100)}%</div>
-          <div className="mt-2 text-sm text-muted">complete</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AddTask({ goal: g, index }: { goal: Goal; index: number }) {
-  const { state, addTask } = useStore();
-  const [f, setF] = useState({ title: "", minutes: state.settings.defaultTaskMinutes ?? 45, kind: "practice" as TaskKind });
-  const max = limitsOf(state).maxTasksPerModule;
-  const full = g.roadmap.modules[index].tasks.length >= max;
-  return (
-    <form
-      className="mt-5 border-t border-line pt-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!f.title.trim()) return;
-        if (addTask(g.id, index, { ...f, title: f.title.trim(), detail: "" })) setF({ ...f, title: "" });
-      }}
-    >
-      <label htmlFor="new-task" className="label">Add a task to this phase</label>
-      <div className="flex flex-wrap gap-2">
-        <input id="new-task" className="input min-w-48 flex-1" placeholder="e.g. Re-solve three problems I got wrong" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} disabled={full} />
-        <select className="input w-auto" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value as TaskKind })} aria-label="Kind">
-          <option value="learn">Learn</option>
-          <option value="practice">Practice</option>
-          <option value="project">Project</option>
-          <option value="review">Review</option>
-          <option value="quiz">Quiz</option>
-        </select>
-        <input type="number" min={10} max={600} step={5} className="input w-24" value={f.minutes} onChange={(e) => setF({ ...f, minutes: Number(e.target.value) || 30 })} aria-label="Minutes" />
-        <button className="btn" disabled={full}>Add</button>
-      </div>
-      <p className="mt-2 text-xs text-muted">
-        {full ? `This phase already has the maximum of ${max} tasks.` : "New tasks are scheduled from today, after the work already planned."}
-      </p>
-    </form>
-  );
-}

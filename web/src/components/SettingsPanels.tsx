@@ -34,7 +34,6 @@ export function BehaviourSettings() {
       >
         {field("maxActiveGoals", "Active goals at once", "Fewer goals get finished.")}
         {field("maxDailyHours", "Study hours a day, all goals", "Across active goals.", 0.5)}
-        {field("maxTasksPerModule", "Tasks per phase", "Keeps phases small.")}
         {field("editWindowDays", "Days a roadmap stays fully editable", "After this, tasks and phases can be added but not removed. 0 = never lock.")}
         <div className="flex items-center gap-3 sm:col-span-2">
           <button className="btn btn-primary">Save limits</button>

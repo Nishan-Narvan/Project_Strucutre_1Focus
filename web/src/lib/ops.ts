@@ -3,7 +3,7 @@ import { checkMaterialUrl, detectKind, MATERIAL_LABEL } from "./materials";
 import { buildSessions, taskIndex } from "./schedule";
 import { isActive, isEditable, limitsOf } from "./rules";
 import { createDemoState, SAMPLE_NOTES } from "./demo";
-import { cleanPhase, cleanTask, RoadmapError } from "./roadmap";
+import { cleanPhase, cleanTask, KIND_ID, RoadmapError, TASK_KINDS } from "./roadmap";
 
 /**
  * Every change to a person's data, as a plain object, applied by one pure function.
@@ -290,14 +290,14 @@ function applyCore(s: AppState, op: Op, ctx: OpContext): AppState {
           const keptIds = new Set(op.roadmap.modules.flatMap((m) => m.tasks.map((t) => t.id)));
           const losing = g.sessions.some((x) => x.done && !keptIds.has(x.taskId));
           if (losing) locked(s, g, ctx, "tasks with finished work can be removed");
-          for (const m of op.roadmap.modules) if (m.tasks.length > L.maxTasksPerModule) throw new OpError(`Phase "${m.title}" has ${m.tasks.length} tasks; the limit is ${L.maxTasksPerModule}.`);
+          for (const m of op.roadmap.modules) if (L.maxTasksPerModule && m.tasks.length > L.maxTasksPerModule) throw new OpError(`Phase "${m.title}" has ${m.tasks.length} tasks; the limit is ${L.maxTasksPerModule}.`);
           return replan({ ...g, roadmap: op.roadmap }, ctx.t);
         });
 
       case "add_phase":
         return withGoal(s, op.goalId, (g) => {
           if (g.roadmap.modules.some((m) => m.id === op.phase.id)) return g;
-          if (op.phase.tasks.length > L.maxTasksPerModule) throw new OpError(`A phase can have at most ${L.maxTasksPerModule} tasks.`);
+          if (L.maxTasksPerModule && op.phase.tasks.length > L.maxTasksPerModule) throw new OpError(`A phase can have at most ${L.maxTasksPerModule} tasks.`);
           const modules = [...g.roadmap.modules];
           modules.splice(op.index ?? modules.length, 0, op.phase);
           return replan(withRoadmap(g, modules), ctx.t);
@@ -333,7 +333,7 @@ function applyCore(s: AppState, op: Op, ctx: OpContext): AppState {
           const m = g.roadmap.modules[op.moduleIndex];
           if (!m) throw new OpError(`That goal has ${g.roadmap.modules.length} phases; there is no phase ${op.moduleIndex + 1}.`);
           if (m.tasks.some((t) => t.id === op.task.id)) return g; // already added: a retry
-          if (m.tasks.length >= L.maxTasksPerModule) throw new OpError(`Phase ${op.moduleIndex + 1} already has ${L.maxTasksPerModule} tasks, the limit.`);
+          if (L.maxTasksPerModule && m.tasks.length >= L.maxTasksPerModule) throw new OpError(`Phase ${op.moduleIndex + 1} already has ${L.maxTasksPerModule} tasks, the limit.`);
           const task = cleanTask(op.task, "Task");
           const tasks = [...m.tasks];
           tasks.splice(op.index ?? tasks.length, 0, task);
@@ -366,7 +366,7 @@ function applyCore(s: AppState, op: Op, ctx: OpContext): AppState {
           const where = taskIndex(g)[op.taskId];
           if (!where) throw new OpError("That task does not exist.");
           const to = phaseIndex(g, op.toPhaseId);
-          if (to !== where.moduleIndex && g.roadmap.modules[to].tasks.length >= L.maxTasksPerModule) throw new OpError(`That phase already has ${L.maxTasksPerModule} tasks, the limit.`);
+          if (L.maxTasksPerModule && to !== where.moduleIndex && g.roadmap.modules[to].tasks.length >= L.maxTasksPerModule) throw new OpError(`That phase already has ${L.maxTasksPerModule} tasks, the limit.`);
           const modules = g.roadmap.modules.map((m) => ({ ...m, tasks: m.tasks.filter((t) => t.id !== op.taskId) }));
           const tasks = [...modules[to].tasks];
           tasks.splice(Math.min(op.index ?? tasks.length, tasks.length), 0, where.task);
@@ -458,6 +458,16 @@ function applyCore(s: AppState, op: Op, ctx: OpContext): AppState {
           if (l.maxDailyHours !== undefined && (l.maxDailyHours <= 0 || l.maxDailyHours > 24)) throw new OpError("Daily hours must be more than 0 and at most 24.");
         }
         if (p.defaultTaskMinutes !== undefined && (p.defaultTaskMinutes < 5 || p.defaultTaskMinutes > 600)) throw new OpError("Default task length must be between 5 and 600 minutes.");
+        if (p.taskKinds !== undefined) {
+          if (!Array.isArray(p.taskKinds) || p.taskKinds.length > 30) throw new OpError("At most 30 categories of your own.");
+          const ids = new Set<string>();
+          for (const k of p.taskKinds) {
+            if (!k || !KIND_ID.test(k.id) || (TASK_KINDS as string[]).includes(k.id) || ids.has(k.id)) throw new OpError(`"${k?.label ?? k?.id}" cannot be used as a category name.`);
+            if (!String(k.label ?? "").trim() || String(k.label).length > 24) throw new OpError("A category name must be 1 to 24 characters.");
+            if (!/^#[0-9a-fA-F]{6}$/.test(k.color)) throw new OpError("A category colour must look like #a1b2c3.");
+            ids.add(k.id);
+          }
+        }
         return { ...s, settings: stripSecrets({ ...s.settings, ...p, ...(p.limits ? { limits: { ...s.settings.limits, ...p.limits } } : {}) }) };
       }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import type { Goal, SourceType, TaskKind } from "@/lib/types";
+import type { Goal, SourceType } from "@/lib/types";
 import { progress } from "@/lib/schedule";
 
 /** Goal progress segmented by module: width ∝ module size, fill ∝ completion; the current module glows. */
@@ -41,13 +41,6 @@ export function SourceBadge({ type }: { type: SourceType }) {
   return <span className="shrink-0 rounded-full border border-line px-2 py-0.5 text-[11px] text-muted">{SOURCE_LABEL[type] ?? "Web"}</span>;
 }
 
-const KIND_LABEL: Record<TaskKind, string> = { learn: "Learn", practice: "Practice", project: "Project", review: "Review", quiz: "Checkpoint" };
-
-export function KindTag({ kind }: { kind: TaskKind }) {
-  return <span className="text-xs text-muted">{KIND_LABEL[kind]}</span>;
-}
-
-/** Round completion control. Unchecked opens the note dialog; checked reopens. */
 export function CompleteButton({
   done,
   title,
@@ -77,8 +70,8 @@ export function CompleteButton({
           if (done) onReopen();
           else setOpen(true);
         }}
-        className={`grid ${size} shrink-0 place-items-center rounded-full border transition ${
-          done ? "border-ink bg-ink text-on-ink" : current ? "crystal-ring border-crystal" : "border-faint hover:border-muted"
+        className={`grid ${size} shrink-0 place-items-center rounded-[5px] border-2 transition ${
+          done ? "border-done bg-done text-on-ink" : current ? "crystal-ring border-crystal" : "border-muted hover:border-done hover:bg-done/15"
         }`}
       >
         {done && (

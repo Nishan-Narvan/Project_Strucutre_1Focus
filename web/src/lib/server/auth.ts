@@ -89,6 +89,23 @@ export async function passwordSignIn(email: string, password: string) {
   await setSession(data as Session);
 }
 
+/**
+ * Local development only: sign in as the account in WML_DEV_LOGIN without Google, so the app can be
+ * tried on localhost (Supabase sends Google sign-ins back to the deployed address). Uses the admin API
+ * to make a one-time link for that email and redeems it at once. The route that calls this refuses to
+ * run in production or from anywhere but localhost.
+ */
+export async function devSignIn(email: string) {
+  const link = await gotrue("admin/generate_link", { method: "POST", body: JSON.stringify({ type: "magiclink", email }) }, supabaseEnv().key);
+  const made = await link.json().catch(() => ({}));
+  const token = made.hashed_token ?? made.properties?.hashed_token;
+  if (!link.ok || !token) throw new Error(made.msg || made.error_description || "Could not make a sign-in link for that email.");
+  const res = await gotrue("verify", { method: "POST", body: JSON.stringify({ type: "magiclink", token_hash: token }) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.access_token) throw new Error(data.msg || data.error_description || "Supabase did not accept the local sign-in.");
+  await setSession(data as Session);
+}
+
 // A verified access token is trusted for a minute, so each request does not cost a round trip
 const verified = new Map<string, { user: User; until: number }>();
 
