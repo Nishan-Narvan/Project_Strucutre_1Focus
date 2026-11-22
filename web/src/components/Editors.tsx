@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
-import { fmtDate, fmtDuration, today, uid, WEEK_ORDER, WEEKDAYS } from "@/lib/date";
+import { clockOf, fmtDate, fmtDuration, today, uid, WEEK_ORDER, WEEKDAYS } from "@/lib/date";
 import { isActive, isEditable, limitsOf } from "@/lib/rules";
 import { KindSelect } from "@/components/Kinds";
 import { Menu } from "@/components/ui";
@@ -425,7 +425,7 @@ export function EventItem({ event: e }: { event: import("@/lib/types").DayEvent 
     );
   return (
     <li className="flex items-center gap-2 text-sm">
-      <span className="text-muted">{e.start}–{e.end}</span> {e.title}
+      <span className="text-muted">{clockOf(e.start)}–{clockOf(e.end)}</span> {e.title}
       <button className="ml-auto text-xs text-muted hover:text-ink" onClick={() => { setF(e); setEdit(true); }} aria-label={`Edit ${e.title}`}>Edit</button>
       <button className="text-xs text-muted hover:text-bad" onClick={() => apply({ type: "delete_event", id: e.id })} aria-label={`Remove ${e.title}`}>Remove</button>
     </li>
@@ -435,22 +435,25 @@ export function EventItem({ event: e }: { event: import("@/lib/types").DayEvent 
 /** Insert a task at a position inside a phase. */
 export function InsertTask({ goal: g, phaseIndex, at, onDone }: { goal: Goal; phaseIndex: number; at: number; onDone: () => void }) {
   const { state, apply } = useStore();
-  const [f, setF] = useState({ title: "", minutes: state.settings.defaultTaskMinutes ?? 45, kind: "practice" as TaskKind });
+  const [f, setF] = useState({ title: "", minutes: state.settings.defaultTaskMinutes ?? 45, kind: "practice" as TaskKind, detail: "" });
   return (
     <form
-      className="mt-2 flex flex-wrap gap-2"
+      className="mt-3 grid gap-2 rounded-lg bg-panel-2/60 p-2"
       onSubmit={(e) => {
         e.preventDefault();
         if (!f.title.trim()) return;
         const m = g.roadmap.modules[phaseIndex];
-        if (!apply({ type: "add_task", goalId: g.id, moduleIndex: phaseIndex, index: at, task: { id: `${m.id}x${uid()}`, title: f.title.trim(), minutes: f.minutes, kind: f.kind, detail: "" } })) onDone();
+        if (!apply({ type: "add_task", goalId: g.id, moduleIndex: phaseIndex, index: at, task: { id: `${m.id}x${uid()}`, title: f.title.trim(), minutes: f.minutes, kind: f.kind, detail: f.detail.trim() } })) onDone();
       }}
     >
-      <input className="input min-w-48 flex-1" autoFocus value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="New task, inserted here" aria-label="New task" />
-      <KindSelect value={f.kind} onChange={(kind) => setF({ ...f, kind })} />
-      <input type="number" min={5} max={600} step={5} className="input w-24" value={f.minutes} onChange={(e) => setF({ ...f, minutes: Number(e.target.value) || 5 })} aria-label="Minutes" />
-      <button className="btn btn-primary">Insert</button>
-      <button type="button" className="btn btn-quiet" onClick={onDone}>Cancel</button>
+      <input className="input" autoFocus value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="New task, inserted here" aria-label="New task" />
+      <textarea className="input resize-y" rows={3} value={f.detail} onChange={(e) => setF({ ...f, detail: e.target.value })} placeholder={"What's in it, one point per line\ne.g. Read chapter 3\nDo the 5 exercises"} aria-label="What's in it" />
+      <div className="flex flex-wrap items-center gap-2">
+        <KindSelect value={f.kind} onChange={(kind) => setF({ ...f, kind })} />
+        <input type="number" min={5} max={600} step={5} className="input w-24" value={f.minutes} onChange={(e) => setF({ ...f, minutes: Number(e.target.value) || 5 })} aria-label="Minutes" />
+        <button className="btn btn-primary btn-sm ml-auto">Insert</button>
+        <button type="button" className="btn btn-quiet btn-sm" onClick={onDone}>Cancel</button>
+      </div>
     </form>
   );
 }

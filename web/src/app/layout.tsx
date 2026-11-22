@@ -9,7 +9,7 @@ import { CACHE_KEY } from "@/lib/appearance";
 const ui = Instrument_Sans({ variable: "--font-ui", subsets: ["latin"] });
 const display = Instrument_Serif({ variable: "--font-display", subsets: ["latin"], weight: "400" });
 
-const THEME_BOOT = `try{var a=JSON.parse(localStorage.getItem(${JSON.stringify(CACHE_KEY)})||"null");if(a){var t=a.theme==="system"?(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):a.theme;var g=a.glassLevel!=null?a.glassLevel:(a.glass?Math.round((100-(a.panelOpacity||60))*1.25):0);g=Math.min(100,Math.max(0,g));var r=document.documentElement;r.dataset.theme=t||"dark";r.dataset.glass=g>0?"on":"off";r.style.setProperty("--g",String(g/100))}}catch(e){}`;
+const THEME_BOOT = `try{var a=JSON.parse(localStorage.getItem(${JSON.stringify(CACHE_KEY)})||"null");if(a){var t=a.theme==="system"?(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):a.theme;document.documentElement.dataset.theme=t||"dark"}}catch(e){}`;
 
 export const metadata: Metadata = {
   title: "Where MyLife",

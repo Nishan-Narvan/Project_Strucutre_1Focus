@@ -40,9 +40,9 @@ export function Shell({ children }: { children: ReactNode }) {
   };
 
   return (
-    // Two panels float over the wall (or wallpaper): the side panel and the main panel
+    // Two solid panels on the wall: the side panel and the main panel
     <div className="min-h-dvh md:grid md:grid-cols-[232px_1fr] md:gap-3 md:p-3">
-      <aside className="glass sticky top-0 z-20 flex flex-col border-b border-line bg-bg md:top-3 md:h-[calc(100dvh-1.5rem)] md:rounded-[22px] md:border">
+      <aside className="sticky top-0 z-20 flex flex-col border-b border-line bg-bg md:top-3 md:h-[calc(100dvh-1.5rem)] md:rounded-[22px] md:border">
         <Link href="/goals" className="flex items-center gap-2.5 px-5 py-4 md:py-6">
           <Logo className="h-6 w-6 text-ink" />
           <span className="font-serif text-xl leading-none whitespace-nowrap">Where MyLife</span>
@@ -65,7 +65,7 @@ export function Shell({ children }: { children: ReactNode }) {
         </div>
       </aside>
       {/* Bottom padding keeps page content clear of the assistant's button */}
-      <main className="glass min-w-0 md:min-h-[calc(100dvh-1.5rem)] md:rounded-[22px] md:border md:border-line md:bg-bg">
+      <main className="min-w-0 md:min-h-[calc(100dvh-1.5rem)] md:rounded-[22px] md:border md:border-line md:bg-bg">
         <div className="mx-auto w-full max-w-[1160px] px-4 pt-6 pb-28 md:px-10 md:pt-10">{children}</div>
       </main>
       <AgentBot />

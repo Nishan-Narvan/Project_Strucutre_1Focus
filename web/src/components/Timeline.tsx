@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
 import { layoutDay, type StudyBlock } from "@/lib/schedule";
-import { hhmm, today } from "@/lib/date";
+import { clock, today } from "@/lib/date";
 import { CompleteButton } from "./ui";
 import type { DayEvent } from "@/lib/types";
 
@@ -63,7 +63,7 @@ export function Timeline({ date, className = "h-[68vh]", extra }: { date: string
       <div className="relative" style={{ height: 1440 * PX }}>
         {Array.from({ length: 24 }).map((_, h) => (
           <div key={h} className="absolute inset-x-0 border-t border-line/70" style={{ top: h * 60 * PX }}>
-            <span className="absolute left-3 top-1 text-[11px] text-faint">{hhmm(h * 60)}</span>
+            <span className="absolute left-3 top-1 text-[11px] text-faint">{clock(h * 60).replace(":00", "")}</span>
           </div>
         ))}
 
@@ -77,7 +77,7 @@ export function Timeline({ date, className = "h-[68vh]", extra }: { date: string
           >
             {b.title}
             <span className="ml-2 text-faint">
-              {hhmm(b.start)}–{hhmm(b.end)}
+              {clock(b.start)} – {clock(b.end)}
             </span>
           </div>
         ))}
@@ -122,7 +122,7 @@ function StudyCard({ b, current, onComplete, onReopen }: { b: StudyBlock; curren
         </div>
         {h > 38 && (
           <div className="truncate text-muted">
-            {hhmm(b.start)}–{hhmm(b.end)},{" "}
+            {clock(b.start)} – {clock(b.end)},{" "}
             <Link href={`/goals/${b.goal.id}`} className="hover:text-ink hover:underline">
               {b.goal.title}
             </Link>

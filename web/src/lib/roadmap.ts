@@ -52,7 +52,7 @@ export function cleanTask(input: TaskInput, where: string, defaultMinutes = 45):
   const minutes = Math.round(Number(input.minutes ?? defaultMinutes));
   if (!Number.isFinite(minutes) || minutes < 5 || minutes > 600) throw new RoadmapError(`${where} "${title}": minutes must be between 5 and 600.`);
   const kind = typeof input.kind === "string" && KIND_ID.test(input.kind) ? input.kind : "practice";
-  return { id: typeof input.id === "string" && input.id ? input.id : uid() + uid(), title, minutes, kind, detail: str(input.detail, 600) };
+  return { id: typeof input.id === "string" && input.id ? input.id : uid() + uid(), title, minutes, kind, detail: str(input.detail, 2000) };
 }
 
 function cleanResources(v: unknown): Resource[] {

@@ -4,18 +4,17 @@
  * Where MyLife: one ground, one ink, one crystal hue reserved for "current".
  *
  * Layers, back to front:
- *   wall      the background (or a wallpaper image)
+ *   wall      the background
  *   bg        side panel, main panel, pop-up windows      (layer 1)
  *   panel     cards inside the main panel                (layer 2)
  *   panel-2   fields, chips, hover states                (layer 3)
- * One glass setting, --g from 0 (solid) to 1 (most see-through), lowers each layer's solidity by a
- * different amount and blurs whatever is behind it, so the front layers always stay readable.
+ * Every layer is solid: no wallpaper and no blur, so screens paint fast.
  */
 @theme {
   --color-wall: var(--wall);
-  --color-bg: color-mix(in srgb, var(--s1) var(--a1), transparent);
-  --color-panel: color-mix(in srgb, var(--s2) var(--a2), transparent);
-  --color-panel-2: color-mix(in srgb, var(--s3) var(--a3), transparent);
+  --color-bg: var(--s1);
+  --color-panel: var(--s2);
+  --color-panel-2: var(--s3);
   --color-line: var(--line);
   --color-ink: var(--ink);
   --color-on-ink: var(--on-ink);
@@ -39,22 +38,13 @@
 }
 
 :root {
-  /* glass: 0 = solid, 1 = most see-through (set from Appearance) */
-  --g: 0;
-  /* At full glass the panels are mostly clear and lightly frosted, so the wallpaper itself shows */
-  --a1: calc(100% - var(--g) * 82%);
-  --a2: calc(100% - var(--g) * 66%);
-  --a3: calc(100% - var(--g) * 45%);
-  --glass-blur: calc(var(--g) * 14px);
-  --wall-blur: calc(var(--g) * 2px);
-
   /* Dark, the default */
   color-scheme: dark;
   --wall: #000000;
   --s1: #0a0a0a;
   --s2: #121212;
   --s3: #1b1b1b;
-  --line: color-mix(in srgb, #ffffff calc(9% + var(--g) * 5%), transparent);
+  --line: color-mix(in srgb, #ffffff 9%, transparent);
   --ink: #f4f4f4;
   --on-ink: #000000;
   --muted: #9a9a9a;
@@ -85,7 +75,7 @@
   --s1: #f7f7f6;
   --s2: #ffffff;
   --s3: #f0f0ee;
-  --line: color-mix(in srgb, #000000 calc(10% + var(--g) * 4%), transparent);
+  --line: color-mix(in srgb, #000000 10%, transparent);
   --ink: #141414;
   --on-ink: #ffffff;
   --muted: #5f5f5f;
@@ -112,23 +102,6 @@ body {
   background: var(--wall);
   color: var(--color-ink);
   font-feature-settings: "tnum" 1;
-}
-
-/* Glass: see-through layers blur whatever is behind them */
-:root[data-glass="on"] :is(.glass, .card, [class~="bg-bg"], [class~="bg-panel"]) {
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.25);
-  backdrop-filter: blur(var(--glass-blur)) saturate(1.25);
-}
-
-/* Wallpaper, behind everything; softened by the same glass setting */
-.app-backdrop {
-  position: fixed;
-  inset: calc(var(--wall-blur) * -2);
-  z-index: -1;
-  background-size: cover;
-  background-position: center;
-  filter: blur(var(--wall-blur));
-  pointer-events: none;
 }
 
 :focus-visible {

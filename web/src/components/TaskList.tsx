@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { useStore } from "@/lib/store";
-import { fmtDate, fmtDuration, hhmm, today, uid } from "@/lib/date";
+import { clock, fmtDate, fmtDuration, hhmm, today, uid } from "@/lib/date";
 import { layoutDay, taskSessions } from "@/lib/schedule";
 import { limitsOf } from "@/lib/rules";
 import { detailPoints, shortPhaseTitle, splitPhaseTitle } from "@/lib/phaseTitle";
-import { KindSelect, KindTag } from "@/components/Kinds";
+import { KindSelect, KindTag, useKindColor } from "@/components/Kinds";
 import { useTaskActions } from "@/components/Editors";
 import { Arrow } from "@/components/PhaseList";
 import { WeekDates } from "@/components/WeekDates";
@@ -46,19 +46,26 @@ export function TaskList({ goal: g, index, current }: { goal: Goal; index: numbe
   const shown = m.tasks.map((t, position) => ({ t, position })).filter(({ t }) => !(hideDone && isDone(t)));
 
   return (
-    <section aria-label="Tasks" className="rounded-2xl border border-line bg-panel-2/60 p-2">
-      <header className="flex items-start gap-2 px-2 pb-2 pt-1.5">
+    <section
+      aria-label="Tasks"
+      className="rounded-[20px] p-3 sm:p-4"
+      style={{ background: `color-mix(in srgb, var(${doneCount === m.tasks.length && m.tasks.length ? "--done" : current ? "--crystal" : "--muted"}) 5%, var(--s1))` }}
+    >
+      <header className="flex items-start gap-3 px-1 pb-4">
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-semibold leading-snug">
+          <h2 className="text-base font-semibold leading-6">
             {label ?? `Week ${index + 1}`}: {shortPhaseTitle(m.title)}
-          </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted">
+          </h2>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
             <WeekDates goal={g} index={index} className="-ml-1.5" />
-            <span className="tabular-nums">{fmtDuration(m.tasks.reduce((a, x) => a + x.minutes, 0))} total</span>
+            <span className="tabular-nums">{fmtDuration(m.tasks.reduce((a, x) => a + x.minutes, 0))} in total</span>
             {m.tasks.length > 0 && doneCount === m.tasks.length && <span className="font-medium text-done">Week complete</span>}
           </div>
         </div>
-        <span className={`pt-0.5 text-xs tabular-nums ${doneCount === m.tasks.length && m.tasks.length > 0 ? "text-done" : "text-muted"}`} title={`${doneCount} of ${m.tasks.length} done`}>
+        <span
+          className={`mt-0.5 rounded-full px-2.5 py-0.5 text-xs font-medium tabular-nums ${doneCount === m.tasks.length && m.tasks.length > 0 ? "bg-done/15 text-done" : "bg-panel-2 text-ink"}`}
+          title={`${doneCount} of ${m.tasks.length} done`}
+        >
           {doneCount}/{m.tasks.length}
         </span>
         <Menu
@@ -70,16 +77,17 @@ export function TaskList({ goal: g, index, current }: { goal: Goal; index: numbe
         />
       </header>
 
-      <ol className="space-y-2">
+      <ol className="space-y-4">
         {shown.map(({ t, position }) => (
           <TaskCard key={t.id} goal={g} task={t} index={index} position={position} count={m.tasks.length} done={isDone(t)} isNext={current && t.id === next?.id} slots={slots} />
         ))}
       </ol>
-      {m.tasks.length === 0 && <p className="px-2 py-3 text-sm text-muted">No tasks in this phase yet.</p>}
+      {m.tasks.length === 0 && <p className="px-1 py-4 text-sm text-muted">No tasks in this week yet.</p>}
 
       {adding ? <AddTask goal={g} index={index} onDone={() => setAdding(false)} /> : (
-        <button type="button" className="mt-2 w-full rounded-lg px-2 py-2 text-left text-sm text-muted transition hover:bg-panel hover:text-ink" onClick={() => setAdding(true)}>
-          + Add a task
+        <button type="button" className="mt-3 flex w-full items-center gap-2 rounded-[14px] px-4 py-3 text-left text-sm text-muted transition-colors hover:bg-panel hover:text-ink" onClick={() => setAdding(true)}>
+          <span className="grid h-5 w-5 place-items-center rounded-full border-2 border-dashed border-muted text-xs leading-none" aria-hidden>+</span>
+          Add a task
         </button>
       )}
     </section>
@@ -90,6 +98,7 @@ function TaskCard({ goal: g, task, index, position, count, done, isNext, slots }
   const { completeTask, reopenTask, apply } = useStore();
   const m = g.roadmap.modules[index];
   const [linking, setLinking] = useState(false);
+  const kindColor = useKindColor(task.kind);
   const shift = (d: number) => {
     const ids = m.tasks.map((x) => x.id);
     [ids[position], ids[position + d]] = [ids[position + d], ids[position]];
@@ -99,44 +108,61 @@ function TaskCard({ goal: g, task, index, position, count, done, isNext, slots }
   const sessions = taskSessions(g, task.id);
   const doneAt = sessions.filter((s) => s.doneAt).map((s) => s.doneAt!).sort().pop();
   const points = detailPoints(task.detail);
+  const notes = sessions.filter((s) => s.done && s.note);
+  const stripe = done ? "var(--done)" : kindColor;
   return (
-    <li id={`task-${task.id}`} className={`scroll-mt-24 rounded-xl border bg-panel px-3 py-2.5 transition-colors ${isNext ? "crystal-ring border-crystal/50" : done ? "border-done/30" : "border-line hover:border-muted"}`}>
-      <div className="flex items-center gap-2">
+    <li
+      id={`task-${task.id}`}
+      className={`group/card relative scroll-mt-24 overflow-hidden rounded-[14px] border-[1.5px] py-4 pl-5 pr-3 transition-colors sm:pr-4 ${isNext ? "crystal-ring" : ""}`}
+      style={{
+        background: `color-mix(in srgb, ${stripe} ${done ? 10 : 8}%, var(--s2))`,
+        borderColor: isNext ? "var(--crystal)" : `color-mix(in srgb, ${stripe} 45%, transparent)`,
+      }}
+    >
+      {/* the task's colour: its category, or green once done */}
+      <span className="absolute inset-y-0 left-0 w-1.5" style={{ background: stripe }} aria-hidden />
+
+      <div className="flex items-center gap-3">
         <When goal={g} sessions={sessions} slots={slots} done={done} />
-        <span className="ml-auto flex items-center gap-2 text-xs text-faint">
-          <span className="hidden sm:inline"><KindTag kind={task.kind} /></span>
-          <span>{fmtDuration(task.minutes)}</span>
+        <span className="ml-auto hidden items-center gap-3 text-xs text-muted sm:flex">
+          <KindTag kind={task.kind} />
+          <span className="tabular-nums">{fmtDuration(task.minutes)}</span>
         </span>
-        <span className="-my-1 flex items-center">
+        <span className="ml-auto flex items-center sm:ml-0">
           <Arrow dir="up" disabled={position === 0} label={`Move ${task.title} up`} onClick={() => shift(-1)} />
           <Arrow dir="down" disabled={position === count - 1} label={`Move ${task.title} down`} onClick={() => shift(1)} />
+          <span className="-mr-1">{menu}</span>
         </span>
-        <span className="-my-1 -mr-1.5">{menu}</span>
       </div>
-      <div className="mt-1.5 flex items-start gap-2.5">
-        <span className="pt-0.5">
-          <CompleteButton done={done} current={isNext} title={task.title} size="h-[18px] w-[18px]" onComplete={(note) => completeTask(g.id, task.id, note)} onReopen={() => reopenTask(g.id, task.id)} />
-        </span>
-        <span className={`min-w-0 flex-1 text-[15px] font-medium leading-snug ${done ? "text-muted line-through" : isNext ? "crystal-text" : "text-ink"}`}>{task.title}</span>
+
+      <div className="mt-2 flex items-start gap-3">
+        <CompleteButton done={done} current={isNext} title={task.title} size="mt-0.5 h-5 w-5" onComplete={(note) => completeTask(g.id, task.id, note)} onReopen={() => reopenTask(g.id, task.id)} />
+        <span className={`min-w-0 flex-1 text-base font-medium leading-6 ${done ? "text-ink/70 line-through decoration-done/70" : isNext ? "crystal-text" : "text-ink"}`}>{task.title}</span>
+        <span className="text-xs tabular-nums text-muted sm:hidden">{fmtDuration(task.minutes)}</span>
       </div>
+
       {points.length > 0 && (
-        <ul className={`ml-7 mt-1.5 list-disc space-y-0.5 pl-4 text-[13px] leading-snug marker:text-faint ${done ? "text-faint" : "text-muted"}`}>
+        <ul className={`ml-8 mt-2 list-disc space-y-1 pl-4 text-sm leading-5 marker:text-muted ${done ? "text-muted" : "text-ink/80"}`}>
           {points.map((p, i) => <li key={i}>{p}</li>)}
         </ul>
       )}
-      {(done && doneAt) || sessions.some((s) => s.done && s.note) ? (
-        <div className="ml-7 mt-2.5 rounded-lg border-l-2 border-done bg-done/[0.07] px-3 py-2">
-          <p className="text-xs font-medium text-done">What you learned{done && doneAt ? <span className="font-normal text-muted"> · completed {fmtDoneAt(doneAt)}</span> : null}</p>
-          {sessions.filter((s) => s.done && s.note).map((s) => (
-            <p key={s.id} className="mt-1 whitespace-pre-wrap text-[13px] leading-snug text-ink/90">{s.note}</p>
+
+      {(done && doneAt) || notes.length ? (
+        <div className="ml-8 mt-3 rounded-[10px] bg-done/10 px-3 py-2.5">
+          <p className="text-xs font-medium text-done">
+            What you learned{done && doneAt ? <span className="font-normal text-muted"> · completed {fmtDoneAt(doneAt)}</span> : null}
+          </p>
+          {notes.map((s) => (
+            <p key={s.id} className="mt-1 whitespace-pre-wrap text-sm leading-5 text-ink/90">{s.note}</p>
           ))}
-          {!sessions.some((s) => s.done && s.note) && <p className="mt-1 text-xs text-muted">No note was written.</p>}
+          {!notes.length && <p className="mt-1 text-xs text-muted">No note was written.</p>}
         </div>
       ) : null}
-      <div className="ml-7 mt-1.5 flex flex-wrap items-center gap-x-3">
+
+      <div className="ml-8 mt-3 flex flex-wrap items-center gap-2">
         <TaskMaterials goal={g} taskId={task.id} />
         {!linking && (
-          <button type="button" onClick={() => setLinking(true)} className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-xs text-muted transition-colors hover:bg-panel-2 hover:text-k-learn">
+          <button type="button" onClick={() => setLinking(true)} className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs text-muted transition-colors hover:bg-panel-2 hover:text-k-learn">
             <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden>
               <path d="M6.5 9.5l3-3M7 4.5l1-1a2.5 2.5 0 013.5 3.5l-1 1M9 11.5l-1 1A2.5 2.5 0 014.5 9l1-1" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" />
             </svg>
@@ -162,7 +188,8 @@ function When({ goal: g, sessions, slots, done }: { goal: Goal; sessions: Sessio
   const pending = sessions.filter((s) => !s.done).sort((a, b) => a.date.localeCompare(b.date));
   const s = pending[0] ?? sessions.filter((x) => x.done).sort((a, b) => a.date.localeCompare(b.date)).pop();
   const slot = s ? slots[s.id] : undefined;
-  const placed = slot && slot.end > slot.start ? slot : undefined;
+  // a block past midnight or of no length means the day had no free time for it
+  const placed = slot && slot.end > slot.start && slot.start < 1440 ? slot : undefined;
   const [date, setDate] = useState(t);
   const [time, setTime] = useState("");
 
@@ -195,11 +222,11 @@ function When({ goal: g, sessions, slots, done }: { goal: Goal; sessions: Sessio
           <path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
         </svg>
         {day}
-        {placed ? `, ${hhmm(placed.start)}–${hhmm(placed.end)}` : !s.done && <span className="text-late"> · no free time that day</span>}
+        {placed ? `, ${clock(placed.start)} – ${clock(placed.end)}` : !s.done && <span className="text-late"> · no free time that day</span>}
         {missed && <span className="hidden sm:inline">· missed</span>}
         {more > 0 && <span className="text-faint">+{more}</span>}
       </button>
-      <Popover anchor={ref} open={open} onClose={close} label="When">
+      <Popover anchor={ref} open={open} onClose={close} label="When" width={300}>
         {changing ? (
           <form
             className="grid gap-2 p-2"
@@ -210,9 +237,9 @@ function When({ goal: g, sessions, slots, done }: { goal: Goal; sessions: Sessio
               else close();
             }}
           >
-            <div className="grid grid-cols-[1fr_auto] gap-2">
-              <label className="text-xs text-muted">Date<input type="date" className="input mt-1" value={date} min={t} onChange={(e) => setDate(e.target.value)} required /></label>
-              <label className="text-xs text-muted">Time<input type="time" className="input mt-1 w-28" value={time} onChange={(e) => setTime(e.target.value)} /></label>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="grid min-w-0 gap-1 text-xs text-muted">Date<input type="date" className="input w-full min-w-0" value={date} min={t} onChange={(e) => setDate(e.target.value)} required /></label>
+              <label className="grid min-w-0 gap-1 text-xs text-muted">Time<input type="time" className="input w-full min-w-0" value={time} onChange={(e) => setTime(e.target.value)} /></label>
             </div>
             {error && <p className="text-xs text-bad" role="alert">{error}</p>}
             <div className="flex gap-2"><button className="btn btn-primary btn-sm">Save</button><button type="button" className="btn btn-quiet btn-sm" onClick={() => setChanging(false)}>Back</button></div>
@@ -253,7 +280,7 @@ function AddLink({ goal: g, taskId, phaseId, onDone }: { goal: Goal; taskId: str
   const [msg, setMsg] = useState("");
   return (
     <form
-      className="ml-7 mt-2 grid gap-2 rounded-lg bg-panel-2/60 p-2 sm:grid-cols-[1fr_12rem_auto_auto]"
+      className="ml-8 mt-3 grid gap-2 rounded-[10px] bg-panel-2/70 p-3 sm:grid-cols-[1fr_12rem_auto_auto]"
       onSubmit={(e) => {
         e.preventDefault();
         const bad = checkMaterialUrl(url);
@@ -280,7 +307,7 @@ function AddTask({ goal: g, index, onDone }: { goal: Goal; index: number; onDone
   if (full) return <p className="mt-2 px-2 py-2 text-xs text-muted">This phase already has the maximum of {max} tasks.</p>;
   return (
     <form
-      className="mt-2 grid gap-2 rounded-xl border border-line bg-panel p-3"
+      className="mt-3 grid gap-3 rounded-[14px] bg-panel p-4"
       onSubmit={(e) => {
         e.preventDefault();
         if (!f.title.trim()) return;
@@ -288,7 +315,7 @@ function AddTask({ goal: g, index, onDone }: { goal: Goal; index: number; onDone
       }}
     >
       <input className="input" autoFocus placeholder="Task name" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} aria-label="Task name" />
-      <textarea className="input resize-y" rows={2} placeholder="What's in it, one point per line (optional)" value={f.detail} onChange={(e) => setF({ ...f, detail: e.target.value })} aria-label="What's in it" />
+      <textarea className="input resize-y" rows={3} placeholder="What's in it, one point per line (optional)" value={f.detail} onChange={(e) => setF({ ...f, detail: e.target.value })} aria-label="What's in it" />
       <div className="flex flex-wrap gap-2">
         <KindSelect value={f.kind} onChange={(kind) => setF({ ...f, kind })} />
         <input type="number" min={10} max={600} step={5} className="input w-24" value={f.minutes} onChange={(e) => setF({ ...f, minutes: Number(e.target.value) || 30 })} aria-label="Minutes" />

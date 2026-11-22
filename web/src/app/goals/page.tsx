@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { useStore } from "@/lib/store";
 import { NewGoalDialog } from "@/components/NewGoalDialog";
-import { daysBetween, fmtDate, fmtDuration, today, weekday, WEEKDAYS } from "@/lib/date";
+import { clockOf, daysBetween, fmtDate, fmtDuration, today, weekday, WEEKDAYS } from "@/lib/date";
 import { lastSessionDate, overdue, progress, streak } from "@/lib/schedule";
 import { roadmapTrack, type DayState } from "@/lib/insight";
 import { committedHours, isActive, limitsOf } from "@/lib/rules";
@@ -134,7 +134,7 @@ function GoalCard({ goal: g, t }: { goal: Goal; t: string }) {
 
       <dl className="col-span-2 grid gap-5 border-t border-line pt-5 sm:grid-cols-3 md:col-span-1">
         <Fact label="Habit" value={`${fmtDuration(g.hoursPerDay * 60)} ${dayText(g.days)}`} status={st > 0 ? `${st}-day streak` : "No streak yet"}>
-          Starts at {g.prefStart}
+          Starts at {clockOf(g.prefStart)}
         </Fact>
         <Fact label="This week" dot="crystal" value={`${track.weekDone} of ${plural(track.weekTotal, "roadmap task")}`} status={weekStatus.text} bad={weekStatus.bad}>
           <WeekTrack days={track.days} />

@@ -104,7 +104,7 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
   return (
     <OnTop>
     <div className="fixed inset-0 z-50 grid place-items-center bg-scrim p-3 md:p-6" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby="new-goal-title" className="glass flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[16px] md:max-h-[calc(100dvh-3rem)] border border-line bg-bg shadow-2xl shadow-black/30" onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="new-goal-title" className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[16px] md:max-h-[calc(100dvh-3rem)] border border-line bg-bg shadow-2xl shadow-black/30" onClick={(e) => e.stopPropagation()}>
         <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 md:px-7 md:py-5">
           <div>
             <h2 id="new-goal-title" className="font-serif text-3xl leading-none tracking-tight">{atLimit ? `You already have ${L.maxActiveGoals} active goals` : "Start a new goal"}</h2>

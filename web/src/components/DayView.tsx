@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useStore } from "@/lib/store";
-import { addDays, fmtDate, fmtDuration, hhmm, today, weekday, WEEKDAYS } from "@/lib/date";
+import { addDays, clock, clockOf, fmtDate, fmtDuration, today, weekday, WEEKDAYS } from "@/lib/date";
 import { layoutDay, progress, streak } from "@/lib/schedule";
 import { Timeline, nextBlock, useNowMinutes } from "@/components/Timeline";
 import { CompleteButton } from "@/components/ui";
@@ -49,7 +49,7 @@ export function DayView({ initialDate }: { initialDate: string }) {
           <p className="mt-3 max-w-xl text-[15px] text-ink/80">
             {next ? (
               <>
-                Next at {hhmm(next.start)}: <span className="crystal-text">{next.task.title}</span>, for {next.goal.title}.
+                Next at {clock(next.start)}: <span className="crystal-text">{next.task.title}</span>, for {next.goal.title}.
               </>
             ) : planned > 0 ? (
               `${fmtDuration(planned)} completed across ${new Set(sessions.map((s) => s.goal.id)).size} goals.`
@@ -119,7 +119,7 @@ export function DayView({ initialDate }: { initialDate: string }) {
                     <div className="min-w-0 text-sm">
                       <div className={b.session.done ? "text-muted line-through" : cur ? "crystal-text" : ""}>{b.task.title}</div>
                       <div className="text-xs text-muted">
-                        {hhmm(b.start)}, {fmtDuration(b.session.minutes)} for{" "}
+                        {clock(b.start)}, {fmtDuration(b.session.minutes)} for{" "}
                         <Link href={`/goals/${b.goal.id}`} className="hover:text-ink hover:underline">{b.goal.title}</Link>
                       </div>
                       {b.session.note && <p className="mt-1 border-l border-faint pl-2 text-xs italic text-ink/70">{b.session.note}</p>}
@@ -164,11 +164,11 @@ export function DayView({ initialDate }: { initialDate: string }) {
                     <div className="flex items-baseline justify-between gap-2 text-sm">
                       <Link href={`/goals/${g.id}`} className="truncate hover:underline">{g.title}</Link>
                       <span className={`shrink-0 text-xs ${doneToday ? "text-ink" : todays.length ? "text-muted" : "text-faint"}`}>
-                        {doneToday ? "Done today" : todays.length ? `${g.prefStart} today` : "Rest day"}
+                        {doneToday ? "Done today" : todays.length ? `${clockOf(g.prefStart)} today` : "Rest day"}
                       </span>
                     </div>
                     <p className="mt-0.5 text-xs text-muted">
-                      {fmtDuration(g.hoursPerDay * 60)} from {g.prefStart}, working through module {p.currentModule + 1}: {g.roadmap.modules[p.currentModule]?.title}
+                      {fmtDuration(g.hoursPerDay * 60)} from {clockOf(g.prefStart)}, working through module {p.currentModule + 1}: {g.roadmap.modules[p.currentModule]?.title}
                     </p>
                     <p className="mt-1 text-xs text-faint">{st > 0 ? `${st}-day streak` : "Streak starts with your next session"}</p>
                   </li>

@@ -70,7 +70,7 @@ export function CompleteButton({
           if (done) onReopen();
           else setOpen(true);
         }}
-        className={`grid ${size} shrink-0 place-items-center rounded-[5px] border-2 transition ${
+        className={`grid ${size} shrink-0 place-items-center rounded-full border-2 transition ${
           done ? "border-done bg-done text-on-ink" : current ? "crystal-ring border-crystal" : "border-muted hover:border-done hover:bg-done/15"
         }`}
       >
@@ -212,7 +212,7 @@ export function Menu({ items, label = "More actions" }: { items: MenuItem[]; lab
         <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden><circle cx="4" cy="10" r="1.6" /><circle cx="10" cy="10" r="1.6" /><circle cx="16" cy="10" r="1.6" /></svg>
       </button>
       {open && (
-        <div role="menu" className="glass absolute right-0 z-30 mt-1 min-w-48 rounded-xl border border-line bg-bg p-1 shadow-xl shadow-black/30">
+        <div role="menu" className="absolute right-0 z-30 mt-1 min-w-48 rounded-xl border border-line bg-bg p-1 shadow-xl shadow-black/30">
           {shown.map((i) => (
             <button
               key={i.label}
@@ -236,8 +236,7 @@ export function Menu({ items, label = "More actions" }: { items: MenuItem[]; lab
 }
 
 /**
- * Renders pop-ups at the top of the page. Needed because a blurred (glass) panel becomes the frame
- * for fixed-position children, which would otherwise be boxed inside the panel.
+ * Renders pop-ups at the top of the page, so a panel or card around them can never clip or cover them.
  */
 export function OnTop({ children }: { children: React.ReactNode }) {
   // Nothing on the server and in the first client pass, so hydration matches

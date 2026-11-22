@@ -19,11 +19,11 @@ export function PhaseTitle({ title, size = "row" }: { title: string; size?: "row
         {tracks.map((t, i) =>
           t.name ? (
             <span key={i} className="block">
-              <span className="block font-serif text-2xl leading-tight tracking-tight md:text-3xl">{t.name}</span>
+              <span className="block font-serif text-2xl leading-tight tracking-tight md:text-[28px]">{t.name}</span>
               <span className="mt-0.5 block text-base leading-snug text-ink/70">{t.topics}</span>
             </span>
           ) : (
-            <span key={i} className={`block font-serif leading-tight tracking-tight ${long ? "text-xl md:text-2xl" : "text-2xl md:text-3xl"}`}>{t.topics}</span>
+            <span key={i} className={`block font-serif leading-tight tracking-tight ${long ? "text-xl md:text-2xl" : "text-2xl md:text-[28px]"}`}>{t.topics}</span>
           ),
         )}
       </span>
@@ -131,7 +131,7 @@ export function PhaseList({ goal: g }: { goal: Goal }) {
                 </div>
                 <Link href={href} className="mt-0.5 block hover:opacity-90"><PhaseTitle title={m.title} /></Link>
                 <div className="mt-2 flex max-w-md items-center gap-3">
-                  <div className="h-1.5 w-32 flex-none overflow-hidden rounded-full bg-line sm:w-56">
+                  <div className="h-1.5 w-32 flex-none overflow-hidden rounded-full bg-panel-2 sm:w-56">
                     <div className={`h-full rounded-full ${done ? "bg-done" : current ? "bg-crystal" : "bg-ink/70"}`} style={{ width: `${Math.round(mp.ratio * 100)}%` }} />
                   </div>
                   <span className="shrink-0 text-xs tabular-nums text-muted">

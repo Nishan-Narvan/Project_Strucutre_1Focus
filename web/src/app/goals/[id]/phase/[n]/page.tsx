@@ -54,13 +54,14 @@ export default function PhasePage() {
 
   return (
     <>
+      <div className="mx-auto max-w-6xl">
       <Link href={`/goals/${g.id}`} className="mb-4 inline-block text-sm text-muted hover:text-ink">
         ← {g.title}, all weeks
       </Link>
 
       {/* This week, in its own panel: switch weeks at the top, then where it stands */}
       <section
-        className={`mx-auto max-w-4xl rounded-2xl border p-5 sm:p-7 ${done ? "border-done/30" : current ? "border-crystal/30" : "border-line"}`}
+        className={`rounded-[20px] border p-5 sm:p-8 ${done ? "border-done/30" : current ? "border-crystal/30" : "border-line"}`}
         style={{ background: `color-mix(in srgb, var(${done ? "--done" : current ? "--crystal" : "--muted"}) 6%, var(--s2))` }}
       >
         <div className="mb-6 flex items-center justify-between gap-3">
@@ -93,15 +94,25 @@ export default function PhasePage() {
           <PhaseTitle title={m.title} size="hero" />
         </h1>
 
-        {m.objective && (
-          <div className="mt-5 rounded-xl border border-line bg-bg/40 px-4 py-3">
-            <p className="text-xs font-medium text-muted">This week&apos;s aim</p>
-            <p className="mt-1 text-[15px] leading-relaxed text-ink/90">{m.objective}</p>
+        {(m.objective || m.checkpoint) && (
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            {m.objective && (
+              <div className="rounded-[14px] bg-bg/50 px-4 py-3.5">
+                <p className="text-xs font-medium text-muted">This week&apos;s aim</p>
+                <p className="mt-1 text-[15px] leading-relaxed text-ink/90">{m.objective}</p>
+              </div>
+            )}
+            {m.checkpoint && (
+              <div className="rounded-[14px] bg-done/[0.08] px-4 py-3.5">
+                <p className="text-xs font-medium text-done">You&apos;re done when you can</p>
+                <p className="mt-1 text-[15px] leading-relaxed text-ink/90">{m.checkpoint}</p>
+              </div>
+            )}
           </div>
         )}
         <PhaseEditor key={m.id} goal={g} index={index} />
 
-        <dl className="mt-6 grid grid-cols-3 divide-x divide-line rounded-lg border border-line bg-bg/40 text-sm">
+        <dl className="mt-6 grid grid-cols-3 divide-x divide-line rounded-[14px] bg-bg/50 text-sm">
           <Stat label="Tasks done"><span className={doneTasks === m.tasks.length && m.tasks.length ? "text-done" : ""}>{doneTasks}</span><span className="text-faint">/{m.tasks.length}</span></Stat>
           <Stat label="Time put in">{fmtDuration(mp.done)}<span className="text-faint"> / {fmtDuration(mp.total)}</span></Stat>
           <Stat label={done ? "Finished / expected" : "Finishes / expected"}>
@@ -129,7 +140,7 @@ export default function PhasePage() {
         )}
       </section>
 
-      <section className="mt-10 grid grid-cols-1 items-start gap-6 lg:px-12 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+      <section className="mt-10 grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <TaskList goal={g} index={index} current={current} />
 
         <div className="space-y-6">
@@ -139,12 +150,13 @@ export default function PhasePage() {
               <p className="mt-1 whitespace-pre-wrap leading-relaxed">{m.notes}</p>
             </div>
           )}
-          <div className="card space-y-4 text-sm">
-            {m.checkpoint && <div><h3 className="text-muted">You&apos;re done when you can</h3><p className="mt-0.5">{m.checkpoint}</p></div>}
-            {m.first_principle && <div><h3 className="text-muted">Built on</h3><p className="mt-0.5">{m.first_principle}</p></div>}
-            {m.zpd_scaffold && <div><h3 className="text-muted">Support while you learn</h3><p className="mt-0.5">{m.zpd_scaffold}</p></div>}
-            {m.key_concepts.length > 0 && <p className="text-muted">{m.key_concepts.join(", ")}</p>}
-          </div>
+          {(m.first_principle || m.zpd_scaffold || m.key_concepts.length > 0) && (
+            <div className="card space-y-4 text-sm">
+              {m.first_principle && <div><h3 className="text-muted">Built on</h3><p className="mt-0.5">{m.first_principle}</p></div>}
+              {m.zpd_scaffold && <div><h3 className="text-muted">Support while you learn</h3><p className="mt-0.5">{m.zpd_scaffold}</p></div>}
+              {m.key_concepts.length > 0 && <p className="text-muted">{m.key_concepts.join(", ")}</p>}
+            </div>
+          )}
           <MaterialsPanel key={m.id} goal={g} phaseId={m.id} />
           {m.resources.length > 0 && (
             <div className="card">
@@ -168,6 +180,7 @@ export default function PhasePage() {
           <NotionNotes key={m.id} goal={g} phaseId={m.id} />
         </div>
       </section>
+      </div>
     </>
   );
 }

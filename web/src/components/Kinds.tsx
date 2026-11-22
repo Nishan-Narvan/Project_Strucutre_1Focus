@@ -6,22 +6,27 @@ import { KIND_ID } from "@/lib/roadmap";
 import type { CustomKind, TaskKind } from "@/lib/types";
 
 /** The five built-in kinds, each with its own colour token. */
-const BUILTIN: { id: string; label: string; text: string; bg: string }[] = [
-  { id: "learn", label: "Learn", text: "text-k-learn", bg: "bg-k-learn" },
-  { id: "practice", label: "Practice", text: "text-k-practice", bg: "bg-k-practice" },
-  { id: "project", label: "Project", text: "text-k-project", bg: "bg-k-project" },
-  { id: "review", label: "Review", text: "text-k-review", bg: "bg-k-review" },
-  { id: "quiz", label: "Checkpoint", text: "text-k-quiz", bg: "bg-k-quiz" },
+const BUILTIN: { id: string; label: string; text: string; bg: string; css: string }[] = [
+  { id: "learn", label: "Learn", text: "text-k-learn", bg: "bg-k-learn", css: "var(--k-learn)" },
+  { id: "practice", label: "Practice", text: "text-k-practice", bg: "bg-k-practice", css: "var(--k-practice)" },
+  { id: "project", label: "Project", text: "text-k-project", bg: "bg-k-project", css: "var(--k-project)" },
+  { id: "review", label: "Review", text: "text-k-review", bg: "bg-k-review", css: "var(--k-review)" },
+  { id: "quiz", label: "Checkpoint", text: "text-k-quiz", bg: "bg-k-quiz", css: "var(--k-quiz)" },
 ];
 
 const SWATCHES = ["#8cc8ff", "#ffcf70", "#ff9f7a", "#72dccb", "#f49cc8", "#b5e36b", "#c7a3ff", "#9aa7b8"];
 
-export type KindOption = { id: string; label: string; text?: string; bg?: string; color?: string };
+export type KindOption = { id: string; label: string; text?: string; bg?: string; color?: string; css?: string };
 
 /** Built-in kinds followed by the person's own categories. */
 export function useKinds(): KindOption[] {
   const { state } = useStore();
-  return [...BUILTIN, ...(state.settings.taskKinds ?? []).map((k) => ({ id: k.id, label: k.label, color: k.color }))];
+  return [...BUILTIN, ...(state.settings.taskKinds ?? []).map((k) => ({ id: k.id, label: k.label, color: k.color, css: k.color }))];
+}
+
+/** A kind's colour as a CSS value, for stripes and tints. */
+export function useKindColor(kind: string) {
+  return useKinds().find((k) => k.id === kind)?.css ?? "var(--muted)";
 }
 
 export function KindTag({ kind }: { kind: TaskKind }) {

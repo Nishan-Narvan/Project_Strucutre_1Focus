@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
-import { daysBetween, fmtDate, fmtDuration, today } from "@/lib/date";
+import { clockOf, daysBetween, fmtDate, fmtDuration, today } from "@/lib/date";
 import { lastSessionDate, overdue, progress } from "@/lib/schedule";
 import { isEditable, limitsOf, lockDate } from "@/lib/rules";
 import { ModuleBar } from "@/components/ui";
@@ -44,7 +44,7 @@ export default function GoalPage() {
           </p>
           <h1 className="mt-1 font-serif text-5xl leading-[1.05] tracking-tight">{g.title}</h1>
           <p className="mt-3 text-sm text-muted">
-            Daily habit: {fmtDuration(g.hoursPerDay * 60)} from {g.prefStart}.{" "}
+            Daily habit: {fmtDuration(g.hoursPerDay * 60)} from {clockOf(g.prefStart)}.{" "}
             {windowDays === 0 ? "Roadmap can always be changed." : editable ? `Roadmap can be changed until ${fmtDate(lockDate(g, windowDays))}.` : `Locked since ${fmtDate(lockDate(g, windowDays))}: you can add tasks, not remove them.`}
           </p>
         </div>

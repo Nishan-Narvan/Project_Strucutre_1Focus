@@ -28,6 +28,16 @@ export const toMin = (t: string) => {
 
 export const hhmm = (min: number) => `${pad(Math.floor(min / 60) % 24)}:${pad(min % 60)}`;
 
+/** Minutes after midnight shown as 12-hour time, e.g. "9:30 pm". Storage stays HH:MM. */
+export const clock = (min: number) => {
+  const m = ((Math.round(min) % 1440) + 1440) % 1440;
+  const h = Math.floor(m / 60);
+  return `${h % 12 || 12}:${pad(m % 60)} ${h < 12 ? "am" : "pm"}`;
+};
+
+/** "19:00" shown as "7:00 pm". */
+export const clockOf = (t: string | undefined) => (t && /^\d{1,2}:\d{2}$/.test(t) ? clock(toMin(t)) : t ?? "");
+
 export const fmtDate = (s: string, opts: Intl.DateTimeFormatOptions = { weekday: "short", month: "short", day: "numeric" }) =>
   parseYmd(s).toLocaleDateString(undefined, opts);
 

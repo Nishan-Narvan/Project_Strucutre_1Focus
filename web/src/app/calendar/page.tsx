@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useStore } from "@/lib/store";
-import { fmtDuration, today, WEEK_ORDER, WEEKDAYS, ymd } from "@/lib/date";
+import { clockOf, fmtDuration, today, WEEK_ORDER, WEEKDAYS, ymd } from "@/lib/date";
 import { PageHeader } from "@/components/ui";
 
 export default function CalendarPage() {
@@ -81,7 +81,7 @@ export default function CalendarPage() {
                     </div>
                   ))}
                   {state.events.filter((e) => e.date === d).map((e) => (
-                    <div key={e.id} className="truncate rounded bg-warn/15 px-1.5 py-0.5 text-[10px] text-warn">{e.start} {e.title}</div>
+                    <div key={e.id} className="truncate rounded bg-warn/15 px-1.5 py-0.5 text-[10px] text-warn">{clockOf(e.start)} {e.title}</div>
                   ))}
                 </div>
               </Link>
