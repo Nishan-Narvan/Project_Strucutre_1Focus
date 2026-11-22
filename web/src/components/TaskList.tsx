@@ -17,7 +17,7 @@ import { checkMaterialUrl, detectKind, titleFromUrl } from "@/lib/materials";
 import { CompleteButton, fmtDoneAt, Menu } from "@/components/ui";
 import type { Goal, Session, Task, TaskKind } from "@/lib/types";
 
-type Slot = { start: number; end: number };
+type Slot = { start: number; end: number; conflict?: boolean };
 
 /** One phase's tasks as a Trello-style list: a header for the week, then a card per task. */
 export function TaskList({ goal: g, index, current }: { goal: Goal; index: number; current: boolean }) {
@@ -33,7 +33,7 @@ export function TaskList({ goal: g, index, current }: { goal: Goal; index: numbe
     for (const b of layoutDay(state, date).study) {
       if (b.goal.id !== g.id) continue;
       const had = slots[b.session.id];
-      slots[b.session.id] = had ? { start: Math.min(had.start, b.start), end: Math.max(had.end, b.end) } : { start: b.start, end: b.end };
+      slots[b.session.id] = had ? { start: Math.min(had.start, b.start), end: Math.max(had.end, b.end), conflict: had.conflict || b.conflict } : { start: b.start, end: b.end, conflict: b.conflict };
     }
   }
   const isDone = (t: Task) => {
@@ -113,14 +113,14 @@ function TaskCard({ goal: g, task, index, position, count, done, isNext, slots }
   return (
     <li
       id={`task-${task.id}`}
-      className={`group/card relative scroll-mt-24 overflow-hidden rounded-[14px] border-[1.5px] py-4 pl-5 pr-3 transition-colors sm:pr-4 ${isNext ? "crystal-ring" : ""}`}
+      className={`group/card relative scroll-mt-24 rounded-[14px] border-[1.5px] py-4 pl-5 pr-3 transition-colors sm:pr-4 ${isNext ? "crystal-ring" : ""}`}
       style={{
         background: `color-mix(in srgb, ${stripe} ${done ? 10 : 8}%, var(--s2))`,
         borderColor: isNext ? "var(--crystal)" : `color-mix(in srgb, ${stripe} 45%, transparent)`,
       }}
     >
-      {/* the task's colour: its category, or green once done */}
-      <span className="absolute inset-y-0 left-0 w-1.5" style={{ background: stripe }} aria-hidden />
+      {/* the task's colour: its category, or green once done. Rounded itself: overflow-hidden on the card would clip its ⋯ menu */}
+      <span className="absolute inset-y-0 left-0 w-1.5 rounded-l-[12.5px]" style={{ background: stripe }} aria-hidden />
 
       <div className="flex items-center gap-3">
         <When goal={g} sessions={sessions} slots={slots} done={done} />
@@ -189,7 +189,7 @@ function When({ goal: g, sessions, slots, done }: { goal: Goal; sessions: Sessio
   const s = pending[0] ?? sessions.filter((x) => x.done).sort((a, b) => a.date.localeCompare(b.date)).pop();
   const slot = s ? slots[s.id] : undefined;
   // a block past midnight or of no length means the day had no free time for it
-  const placed = slot && slot.end > slot.start && slot.start < 1440 ? slot : undefined;
+  const placed = slot && !slot.conflict && slot.end > slot.start && slot.start < 1440 ? slot : undefined;
   const [date, setDate] = useState(t);
   const [time, setTime] = useState("");
 

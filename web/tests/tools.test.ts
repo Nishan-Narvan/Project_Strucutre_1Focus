@@ -8,12 +8,13 @@ import assert from "node:assert/strict";
 import { createDemoState } from "../src/lib/demo";
 import { applyOp, normalizeState, OpError, type Op } from "../src/lib/ops";
 import { asOne, BY_NAME, needsApproval, runSpec, TOOLS, type ToolOutput } from "../src/lib/tools/registry";
-import { addDays } from "../src/lib/date";
+import { addDays, today } from "../src/lib/date";
 import { progress } from "../src/lib/schedule";
 import { kpiReport } from "../src/lib/kpi";
 import type { AppState } from "../src/lib/types";
 
-const T = "2026-11-12";
+// The sample data is dated from the real today, so the test clock must be today too.
+const T = today();
 const fresh = (): AppState => normalizeState(createDemoState());
 const ctx = (state: AppState) => ({ state, t: T, now: `${T}T10:00:00.000Z` });
 
