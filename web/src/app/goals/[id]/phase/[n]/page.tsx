@@ -140,7 +140,7 @@ export default function PhasePage() {
         )}
       </section>
 
-      <section className="mt-10 grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+      <section className="mt-10 grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_24rem]">
         <TaskList goal={g} index={index} current={current} />
 
         <div className="space-y-6">
