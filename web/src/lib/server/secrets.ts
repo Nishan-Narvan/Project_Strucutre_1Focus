@@ -19,6 +19,8 @@ export interface Secrets {
   notion?: string;
   /** Secret calendar feed address (Google Calendar's "secret address in iCal format", or any .ics link) */
   calendar?: string;
+  /** Google Calendar write access: the long-lived login and the id of the calendar the app made */
+  gcal?: { refreshToken: string; calendarId: string };
 }
 
 function key() {

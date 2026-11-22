@@ -7,6 +7,7 @@ import { useStore } from "@/lib/store";
 import { AgentBot } from "@/components/AgentBot";
 import { AccountBox, AccountGate, Notice } from "@/components/AccountGate";
 import { QuickLook } from "@/components/Appearance";
+import { PUBLIC_PATHS } from "@/components/Legal";
 
 /** Where MyLife mark: a path that bends through three waypoints, the last one lit. */
 export function Logo({ className = "" }: { className?: string }) {
@@ -32,6 +33,8 @@ const NAV = [
 export function Shell({ children }: { children: ReactNode }) {
   const path = usePathname();
   const { ready } = useStore();
+  // Privacy and terms are public: shown as they are, signed in or not
+  if (PUBLIC_PATHS.includes(path)) return <>{children}</>;
   // Until signed in and set up, the account screens replace the whole app
   if (!ready) return <AccountGate />;
   const active = (n: (typeof NAV)[number]) => {

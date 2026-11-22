@@ -242,6 +242,8 @@ export interface Settings {
   defaultTaskMinutes?: number;
   /** A calendar feed is connected (its secret address is kept encrypted on the server). */
   calendar?: { name: string };
+  /** Study sessions are written to a "Where MyLife" calendar in the person's Google account (login kept encrypted on the server). */
+  googleSync?: GoogleSync;
   /** Task categories the person added beside the built-in five. */
   taskKinds?: CustomKind[];
   /** Which sections the Goals page shows, in order. */
@@ -329,4 +331,14 @@ export interface AppState {
   chat: AgentTurn[];
   pastChats: PastChat[];
   kpis?: Kpi[];
+}
+
+export interface GoogleSync {
+  /** Name of the calendar the app made and writes to. */
+  calendar: string;
+  /** Minutes before each session that Google reminds the person. */
+  reminderMin: number;
+  /** Last time the calendar was brought up to date (ISO), and the problem if that failed. */
+  lastSync?: string;
+  error?: string;
 }
