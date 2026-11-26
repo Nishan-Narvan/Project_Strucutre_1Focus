@@ -9,7 +9,7 @@ import type { AppState } from "@/lib/types";
  * it reloads and tries again, so the browser, the assistant and Claude can all write at once.
  */
 
-export type Actor = "web" | "assistant" | "claude";
+export type Actor = "web" | "assistant" | "claude" | "gemini" | "mcp";
 
 export class NoState extends Error {
   constructor() {

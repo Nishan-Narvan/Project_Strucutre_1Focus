@@ -5,35 +5,25 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import { asOne, dryRun, inputSchema, needsApproval, runSpec, TOOLS, BY_NAME, type ToolSpec } from "@/lib/tools/registry";
 import { OpError } from "@/lib/ops";
 import { lastAudit, loadState, NotConfigured, userForConnector, validToken } from "@/lib/server/supabase";
-import { applyForUser, todayIn, undoLast } from "@/lib/server/state";
+import { applyForUser, todayIn, undoLast, type Actor } from "@/lib/server/state";
 import { loadSecrets } from "@/lib/server/secrets";
 import { CalendarError, readEvents } from "@/lib/server/calendar";
 import { NotionError, notionMarkdown, readNotionCached } from "@/lib/server/notion";
+import { detectActor } from "@/lib/server/connector";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-/**
- * Where MyLife as a remote MCP server, for claude.ai's "Add custom connector".
- * The secret token in the URL identifies the account; only its hash is stored.
- *
- * Every tool comes from the shared registry (lib/tools/registry.ts), the same one the in-app
- * assistant uses. Changes apply straight to the account through the same rules as the app's own
- * buttons, are recorded in the audit log as "claude", and show in the app within seconds.
- *
- * Approval happens in the chat: a change that needs it returns a plain-language preview and a
- * confirm_token instead of being applied. Calling again with the same arguments plus that token
- * applies it. The token is an HMAC of the account, tool and arguments over a 15-minute window,
- * so it cannot be reused for a different change.
- */
-
-const INSTRUCTIONS = `Where MyLife is the person's own learning-goal tracker: goals, roadmaps of phases and tasks, daily study sessions planned around routines, KPIs, and notes written when sessions are finished. You can run the whole app from here.
+function instructionsFor(actor: Actor) {
+  const caller = actor === "gemini" ? "Google Gemini" : "Claude";
+  return `Where MyLife is the person's own learning-goal tracker: goals, roadmaps of phases and tasks, daily study sessions planned around routines, KPIs, and notes written when sessions are finished. You are connected as ${caller} via MCP and can run the whole app from here.
 Start with get_overview: figures computed by the app from their real data (progress, pace, completion by weekday and time of day, capacity, KPIs, limits, memories). Use get_goal, get_goal_roadmap, get_capacity, get_kpis and the others for detail before changing anything.
 Honesty: never invent figures, tasks, dates or patterns. Back each judgement with a number from the data, and say when there is too little data to call something a pattern (under about 8 past sessions). Do not flatter; if they are behind, say so plainly.
 Roadmaps: when asked to create one, write it yourself with set_roadmap (or create_goal's roadmap field): first principles, start at their current level, realistic total minutes for the time to the deadline, concrete tasks and checkpoints, only real resource links. When reviewing one, read it with get_goal_roadmap, critique it plainly, and apply changes (set_roadmap or bulk_update_roadmap) only when the person agrees.
-Materials: each goal can have linked Notion pages, Google Drive folders and files, docs, PDFs, videos and paths to files on the person's computer (list_materials, also inside get_goal_roadmap). Open web links with your own Notion or Google Drive connector or web fetch when you have one; for local paths, use a file-system tool if available, otherwise name the file. Link new material with add_material when the person shares it.
+Materials: each goal can have linked Notion pages, Google Drive folders and files, docs, PDFs, videos and paths to files on the person's computer (list_materials, also inside get_goal_roadmap). Open web links with your own Notion, Google Drive connector or web fetch when you have one; for local paths, use a file-system tool if available, otherwise name the file. Link new material with add_material when the person shares it.
 History: get_goal_history gives the timeline since creation and the quality of the work; get_memory_file gives everything in one document.
 Changes: only make them when the person asks. Some changes come back with "Not done yet" and a confirm_token: show the person what will happen, and only after they agree, call the same tool again with the same arguments plus confirm_token. Never confirm on your own. Changes that pass apply immediately and appear in the app. undo_last_change reverses the most recent change; get_recent_changes lists what changed.`;
+}
 
 const CONFIRM_P = { type: "string", description: "Leave out on the first call. If the reply says the change needs confirming, ask the person, and once they agree call again with the same arguments plus this token." };
 const REQUEST_P = { type: "string", description: "Optional id that makes a retry safe: the same request_id is never applied twice." };
@@ -45,7 +35,7 @@ const toMcp = (spec: ToolSpec) => ({
   annotations: { readOnlyHint: spec.kind === "read", destructiveHint: spec.kind === "destructive", idempotentHint: spec.kind === "read" },
 });
 
-const EXTRA = [
+const extraTools = (_actor?: Actor) => [
   {
     name: "undo_last_change",
     description: "Reverse the most recent change to the person's data, whoever made it (the app, its assistant or you). Use it when a change was a mistake.",
@@ -54,7 +44,7 @@ const EXTRA = [
   },
   {
     name: "get_recent_changes",
-    description: "The most recent changes to the person's data: when, who made them (web = the person in the app, assistant = the in-app assistant, claude = you) and what they were. undo_last_change reverses the newest one.",
+    description: `The most recent changes to the person's data: when, who made them (web = the person in the app, assistant = the in-app assistant, claude = you via Claude, gemini = you via Google Gemini) and what they were. undo_last_change reverses the newest one.`,
     inputSchema: { type: "object" as const, properties: { limit: { type: "integer", description: "How many, 1 to 30. Default 10." } } },
     annotations: { readOnlyHint: true },
   },
@@ -93,10 +83,10 @@ function preview(userId: string, name: string, args: Record<string, unknown>, su
   );
 }
 
-function buildServer(userId: string) {
-  const server = new Server({ name: "where-mylife", version: "0.3.0" }, { capabilities: { tools: {} }, instructions: INSTRUCTIONS });
+function buildServer(userId: string, actor: Actor = "claude") {
+  const server = new Server({ name: "where-mylife", version: "0.3.0" }, { capabilities: { tools: {} }, instructions: instructionsFor(actor) });
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [...TOOLS.map(toMcp), ...EXTRA] }));
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [...TOOLS.map(toMcp), ...extraTools(actor)] }));
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const name = req.params.name;
@@ -111,7 +101,7 @@ function buildServer(userId: string) {
         const [last] = await lastAudit(userId, 1, false);
         if (!last) return text("There is nothing to undo.");
         if (!confirmed(userId, name, args)) return preview(userId, name, args, `reverse the most recent change: ${last.op.replace(/_/g, " ")} by ${last.actor} at ${last.at.slice(0, 16).replace("T", " ")} UTC.`, true);
-        const r = await undoLast(userId, "claude");
+        const r = await undoLast(userId, actor);
         return text(`Undone: ${r.undone.replace(/_/g, " ")}. The app shows it within a few seconds.`);
       }
 
@@ -157,8 +147,8 @@ Could not read the calendar: ${e instanceof CalendarError ? e.message : "unknown
       if (needsApproval(spec, out, Boolean(row.state.settings.autoApplySafe)) && !confirmed(userId, name, args))
         return preview(userId, name, args, out.summary ?? out.label, spec.kind === "destructive" || Boolean(out.destructive));
 
-      const requestId = typeof args.request_id === "string" ? `claude:${args.request_id.slice(0, 60)}` : undefined;
-      const saved = await applyForUser(userId, asOne(out.ops), "claude", requestId);
+      const requestId = typeof args.request_id === "string" ? `${actor}:${args.request_id.slice(0, 60)}` : undefined;
+      const saved = await applyForUser(userId, asOne(out.ops), actor, requestId);
       return text(`${saved.duplicate ? "Already applied earlier (same request_id); nothing changed." : "Done."} ${out.summary ?? ""}\n\n${body}\n\nThe app shows the change within a few seconds.`);
     } catch (e) {
       if (e instanceof OpError) return text(`Refused: ${e.message}`, true);
@@ -176,8 +166,9 @@ async function handle(req: Request, { params }: { params: Promise<{ token: strin
   try {
     const userId = await userForConnector(token);
     if (!userId) return new Response("Not found", { status: 404 });
+    const actor = detectActor(req);
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
-    await buildServer(userId).connect(transport);
+    await buildServer(userId, actor).connect(transport);
     return await transport.handleRequest(req);
   } catch (e) {
     const status = e instanceof NotConfigured ? 503 : 500;

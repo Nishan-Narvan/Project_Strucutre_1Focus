@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/ui";
 import { BehaviourSettings, DashboardSettings, DataSettings } from "@/components/SettingsPanels";
 import { ModelForm } from "@/components/ModelForm";
 import { McpConnections } from "@/components/McpConnections";
-import { ClaudeConnector } from "@/components/ClaudeConnector";
+import { AiConnectors } from "@/components/AiConnectors";
 import { AppearanceSettings } from "@/components/Appearance";
 import { MemoryFileButtons } from "@/components/Editors";
 import { NotionSettings } from "@/components/NotionView";
@@ -26,7 +26,7 @@ export default function SettingsPage() {
           <NotionSettings />
           <CalendarSettings />
           <GoogleSyncSettings />
-          <ClaudeConnector />
+          <AiConnectors />
           <section className="card space-y-3" aria-label="Memory file">
             <h2 className="text-base font-medium">Memory file</h2>
             <p className="text-sm text-muted">Everything about all your goals in one document: roadmaps, what is done and left, daily history, changes, materials, KPIs and your constraints. Give it to any model to carry on.</p>

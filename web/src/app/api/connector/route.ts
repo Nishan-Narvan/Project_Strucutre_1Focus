@@ -30,7 +30,12 @@ const urlFor = (req: Request, token: string) => `${appOrigin(req)}/api/connector
 export async function GET(req: Request) {
   return withUser(async (user) => {
     const s = await loadSecrets(user.id);
-    return NextResponse.json({ url: s.connector ? urlFor(req, s.connector) : null });
+    const base = s.connector ? urlFor(req, s.connector) : null;
+    return NextResponse.json({
+      url: base,
+      geminiUrl: base ? `${base}?client=gemini` : null,
+      claudeUrl: base,
+    });
   });
 }
 
@@ -39,7 +44,12 @@ export async function POST(req: Request) {
     const token = randomBytes(32).toString("base64url");
     await setConnectorToken(user.id, token);
     await updateSecrets(user.id, (s) => ({ ...s, connector: token }));
-    return NextResponse.json({ url: urlFor(req, token) });
+    const base = urlFor(req, token);
+    return NextResponse.json({
+      url: base,
+      geminiUrl: `${base}?client=gemini`,
+      claudeUrl: base,
+    });
   });
 }
 
